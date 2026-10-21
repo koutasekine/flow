@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<!--
+  フローチャート — JIS X 0121:1986 に沿ったプログラムフローチャートを Python サブセットから描く単一 HTML ツール
+  https://flow.sapp.jp
+
+  MIT License
+  Copyright (c) 2026 Kouta Sekine
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+  このファイルは外部ライブラリを使わず、データをどこにも送信しません。ネットワークなしで動きます。
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>フローチャート</title>
+<style>
+:root{
+  --bg:#f4f4f2; --panel:#fff; --line:#d8d8d4; --text:#222; --accent:#8b1a2b; --err:#b00020; --sel:#fff3c4;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:"Segoe UI","Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;font-size:14px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:16px;margin:0 10px 0 0;font-weight:600}
+header .sp{flex:1}
+button,select,label.btn{font:inherit;padding:4px 10px;border:1px solid #bbb;border-radius:4px;background:#fafafa;cursor:pointer;color:var(--text)}
+button:hover,label.btn:hover{background:#f0f0ee}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:default}
+main{flex:1;display:flex;min-height:0}
+#left{width:38%;min-width:260px;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel)}
+#splitter{width:6px;cursor:col-resize;background:var(--line)}
+#right{flex:1;display:flex;flex-direction:column;min-width:0}
+#editor{flex:1;position:relative;min-height:0}
+textarea#src,#hl{position:absolute;inset:0;margin:0;border:0;padding:10px;font:13px/1.5 Consolas,"Courier New",monospace;tab-size:4;white-space:pre;overflow:auto;box-sizing:border-box;word-break:normal;overflow-wrap:normal}
+textarea#src{resize:none;outline:none;background:transparent;color:transparent;caret-color:#222;z-index:1}
+#hl{pointer-events:none;color:#222;background:#fff;z-index:0}
+#hl .kw{color:#8b1a2b;font-weight:600}#hl .st{color:#1a6b3a}#hl .nu{color:#1d4ed8}#hl .cm{color:#888}#hl .bi{color:#6b3fa0}#hl .fn{color:#0b5c8a}
+#msg{padding:6px 10px;border-top:1px solid var(--line);font-size:13px;min-height:2.6em;max-height:9em;overflow:auto;background:#fcfcfa}
+#msg .err{color:var(--err)}
+#msg .ok{color:#2a6b2a}
+#view{flex:1;overflow:auto;background:#fff;position:relative}
+#view svg{display:block}
+#view.stale svg{opacity:.45}
+#view.paged{background:#e4e4e0;padding:16px}
+#view.paged svg{margin:0 auto 16px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+@media print{ #view.paged{background:#fff;padding:0} #view.paged svg{margin:0;box-shadow:none;page-break-after:always} .screen-only{display:none} }
+#edit{border-top:1px solid var(--line);background:var(--panel);padding:8px 10px;display:none;gap:6px;flex-wrap:wrap;align-items:center}
+#edit.on{display:flex}
+#edit input[type=text]{font:13px Consolas,"Courier New",monospace;padding:4px 6px;border:1px solid #bbb;border-radius:4px;min-width:200px;flex:1}
+#edit .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+#edit .kind{font-weight:600;margin-right:6px}
+.sym.selected .shape{fill:var(--sel)}
+.sym{cursor:pointer}
+.sym:hover .shape{fill:#f6f6f0}
+dialog{border:1px solid #999;border-radius:6px;padding:16px 20px;max-width:720px;font-size:14px}
+dialog h2{font-size:16px;margin:0 0 8px}
+dialog pre{background:#f6f6f2;padding:8px;overflow:auto;font-size:12px}
+dialog table{border-collapse:collapse;font-size:13px}
+dialog td,dialog th{border:1px solid #ccc;padding:3px 8px;text-align:left;vertical-align:top}
+#drop{position:absolute;inset:0;background:rgba(139,26,43,.08);border:3px dashed var(--accent);display:none;align-items:center;justify-content:center;font-size:20px;color:var(--accent);pointer-events:none}
+#drop.on{display:flex}
+.small{font-size:12px;color:#666}
+footer{font-size:11px;color:#777;padding:3px 10px;border-top:1px solid var(--line);background:var(--panel)}
+footer a{color:#777}
+@media print{ @page{margin:0} header,#left,#splitter,#edit,footer{display:none !important} body,main,#right,#view{display:block;overflow:visible;height:auto} }
+</style>
+</head>
+<body>
+<header>
+  <h1>フローチャート</h1>
+  <button id="btnNew">新規</button>
+  <label class="btn">開く<input type="file" id="fileOpen" accept=".py,.txt,.json,.svg" style="display:none"></label>
+  <select id="saveAs">
+    <option value="">保存…</option>
+    <option value="json">JSON</option>
+    <option value="svg">SVG</option>
+    <option value="png">PNG</option>
+    <option value="py">Python(.py)</option>
+    <option value="print">印刷 / PDF</option>
+  </select>
+  <label><input type="checkbox" id="optLineNo"> 行番号を記号識別子として表示</label>
+  <label>ページ分割 <select id="optPage"><option value="">なし</option><option value="A4P">A4 縦</option><option value="A4L">A4 横</option></select></label>
+  <label id="lblRef" style="display:none">結合子の注釈 <select id="optRef"><option value="">なし</option><option value="fig">次の図へ / 前の図から</option><option value="page">n ページへ / n ページから</option></select></label>
+  <span class="sp"></span>
+  <button id="btnSample">例を読み込む</button>
+  <button id="btnHelp">書き方</button>
+</header>
+<main>
+  <div id="left">
+    <div id="editor"><pre id="hl" aria-hidden="true"></pre><textarea id="src" spellcheck="false" placeholder="ここに Python(サブセット)を書くと右にフローチャートが出ます。右の「開始」をクリックすると GUI からも作れます。「書き方」ボタンで使える構文を確認できます。"></textarea></div>
+    <div id="msg"></div>
+  </div>
+  <div id="splitter"></div>
+  <div id="right">
+    <div id="view"><div id="drop">ファイルを置くと開きます(.py / .json / .svg)</div></div>
+    <div id="edit"></div>
+  </div>
+</main>
+<footer>フローチャート — JIS X 0121:1986 に沿ったプログラムフローチャート。単一 HTML、データはどこにも送信されません。MIT License, Copyright (c) 2026 Kouta Sekine. <a href="https://sapp.jp" target="_blank" rel="noopener">S Apps</a></footer>
+
+<dialog id="dlgHelp"></dialog>
+
+<script>
+'use strict';
+/* =====================================================================
+   1. 字句・構文解析(Python サブセット → AST)
+   ===================================================================== */
+const FLOW = (() => {
+
+const KW_UNSUPPORTED = ['class','try','except','finally','with','import','from','lambda','global','nonlocal','yield','async','await','raise','assert','del'];
+
+class ParseError extends Error {
+  constructor(line, msg){ super(msg); this.line = line; }
+}
+
+// 文字列リテラルと括弧を考慮してコメントを切り離し、括弧の対応を検査する
+function splitComment(raw, lineNo){
+  let i=0, depth=0, q=null, code='', bare='', comment=null;   // bare: 文字列の中身を空白に置き換えたもの
+  if(raw.includes('"""')||raw.includes("'''")) throw new ParseError(lineNo,'三重引用符の文字列は使えません');
+  while(i<raw.length){
+    const c=raw[i];
+    if(q){
+      code+=c; bare+=' ';
+      if(c==='\\'){ code+=raw[i+1]??''; bare+=' '; i+=2; continue; }
+      if(c===q) q=null;
+      i++; continue;
+    }
+    if(c==='"'||c==="'"){ q=c; code+=c; bare+=' '; i++; continue; }
+    if(c==='#'){ comment=raw.slice(i+1).trim(); break; }
+    if('([{'.includes(c)) depth++;
+    if(')]}'.includes(c)) depth--;
+    if(depth<0) throw new ParseError(lineNo,'括弧の対応が取れていません');
+    code+=c; bare+=c; i++;
+  }
+  if(q) throw new ParseError(lineNo,'文字列が閉じていません');
+  if(depth>0) throw new ParseError(lineNo,'括弧が閉じていません(1 文は 1 行に書いてください)');
+  code=code.replace(/\s+$/,''); bare=bare.replace(/\s+$/,'');
+  if(bare.endsWith('\\')) throw new ParseError(lineNo,'行の継続(\\)は使えません。1 文は 1 行に書いてください');
+  if(bare.includes(';')) throw new ParseError(lineNo,'セミコロン(;)で文を並べることはできません');
+  return {code, bare, comment};
+}
+
+function indentOf(line){
+  let n=0;
+  for(const c of line){ if(c===' ') n++; else if(c==='\t') n+=4; else break; }
+  return n;
+}
+
+const RE_ID='[A-Za-z_][A-Za-z0-9_]*';
+const reDef   = new RegExp(`^def\\s+(${RE_ID})\\s*\\((.*)\\)\\s*:$`);
+const reIf    = /^if\s+(.+?)\s*:$/;
+const reElif  = /^elif\s+(.+?)\s*:$/;
+const reElse  = /^else\s*:$/;
+const reWhile = /^while\s+(.+?)\s*:$/;
+const reForR  = new RegExp(`^for\\s+(${RE_ID})\\s+in\\s+range\\s*\\((.*)\\)\\s*:$`);
+const reForIn = new RegExp(`^for\\s+(${RE_ID})\\s+in\\s+(.+?)\\s*:$`);
+const reRet   = /^return(?=\s|\(|$)\s*(.*)$/;
+const PR='\\s*("[^"]*"|\'[^\']*\')?\\s*';
+const reInput1 = new RegExp(`^(${RE_ID})\\s*=\\s*(int|float)\\s*\\(\\s*input\\s*\\(${PR}\\)\\s*\\)$`);
+const reInput0 = new RegExp(`^(${RE_ID})\\s*=\\s*input\\s*\\(${PR}\\)$`);
+const reInputM = new RegExp(`^(${RE_ID}(?:\\s*,\\s*${RE_ID})+)\\s*=\\s*map\\s*\\(\\s*(int|float)\\s*,\\s*input\\s*\\(${PR}\\)\\s*\\.split\\s*\\(\\s*\\)\\s*\\)$`);
+const reInputS = new RegExp(`^(${RE_ID}(?:\\s*,\\s*${RE_ID})+)\\s*=\\s*input\\s*\\(${PR}\\)\\s*\\.split\\s*\\(\\s*\\)$`);
+const rePrint  = /^print\s*\((.*)\)$/;
+const reNum    = /^[+-]?\d+$/;
+
+const TYPE_JA = {int:'整数', float:'浮動小数点数', str:'文字列'};
+
+// 引数リストを最上位のカンマで分割
+function splitArgs(s){
+  const out=[]; let depth=0,q=null,cur='';
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(q){ cur+=c; if(c==='\\'){cur+=s[i+1]??'';i++;} else if(c===q) q=null; continue; }
+    if(c==='"'||c==="'"){q=c;cur+=c;continue;}
+    if('([{'.includes(c)) depth++;
+    if(')]}'.includes(c)) depth--;
+    if(c===','&&depth===0){ out.push(cur.trim()); cur=''; continue; }
+    cur+=c;
+  }
+  if(cur.trim()!=='' || out.length) out.push(cur.trim());
+  return out;
+}
+
+function isStringLiteral(s){ return /^(?:"[^"]*"|'[^']*')$/.test(s.trim()); }
+// 文全体が「名前( … )」1 つの呼び出しか(最初の括弧が最後の文字で閉じる)
+function isSingleCall(bare){
+  const i=bare.indexOf('('); if(i<0) return false;
+  let depth=0;
+  for(let k=i;k<bare.length;k++){ const c=bare[k]; if('([{'.includes(c)) depth++; if(')]}'.includes(c)){ depth--; if(depth===0) return k===bare.length-1; } }
+  return false;
+}
+
+let idSeq=0;
+function node(kind, line, props){ return Object.assign({kind, line, id:'n'+(++idSeq), comment:null}, props); }
+
+function parse(text){
+  idSeq=0;
+  const rawLines=text.replace(/\r\n?/g,'\n').split('\n');
+  // 1) 行を分類
+  const lines=[];
+  for(let i=0;i<rawLines.length;i++){
+    const lineNo=i+1;
+    const {code,bare,comment}=splitComment(rawLines[i], lineNo);
+    const ind=indentOf(code);
+    const stmt=code.trim();
+    lines.push({lineNo, ind, stmt, bare:bare.trim(), comment});
+  }
+  const defs=new Set();
+  for(const l of lines){ const m=reDef.exec(l.stmt); if(m && l.ind===0) defs.add(m[1]); }
+
+  let pos=0;
+  const pendingComments=[];
+  function peek(){ while(pos<lines.length){ const l=lines[pos]; if(l.stmt===''){ if(l.comment!==null) pendingComments.push(l.comment); pos++; continue; } return l; } return null; }
+
+  function parseBlock(indent, ctx){
+    // ctx: {inDef, inLoop, parentLine}
+    ctx={...ctx, topLevel:false};
+    const stmts=[];
+    let first=true, blockIndent=null;
+    while(true){
+      const l=peek();
+      if(!l) break;
+      if(first){
+        if(l.ind<=indent) throw new ParseError(ctx.parentLine, 'ブロックの中身がありません(次の行を字下げしてください)');
+        blockIndent=l.ind; first=false;
+      }
+      if(l.ind<blockIndent){ break; }
+      if(l.ind>blockIndent) throw new ParseError(l.lineNo,'字下げが深すぎます');
+      const s=parseStmt(l, blockIndent, ctx);
+      if(s){
+        if(stmts.length && isTerminal(stmts[stmts.length-1])) throw new ParseError(l.lineNo, `${termWord(stmts[stmts.length-1])} の後に文があります(実行されません)`);
+        stmts.push(s);
+      }
+    }
+    if(first) throw new ParseError(ctx.parentLine,'ブロックの中身がありません(次の行を字下げしてください)');
+    return stmts;
+  }
+  function takeComments(){ return pendingComments.splice(0); }
+  function attachComment(n, l){ n.above=takeComments(); n.inline=l.comment; const c=[...n.above, l.comment].filter(x=>x).join(' / '); if(c) n.comment=c; return n; }
+
+  function parseStmt(l, indent, ctx){
+    const s=l.stmt; pos++;
+    let m;
+    const kw=s.split(/[\s(:]/)[0];
+    if(KW_UNSUPPORTED.includes(kw)||s.startsWith('@')) throw new ParseError(l.lineNo, `「${kw}」はこのツールでは使えません(フローチャートにできる構文は「書き方」を参照)`);
+    if(/^(match|case)\s+.*:$/.test(l.bare)) throw new ParseError(l.lineNo, `「${kw}」文はこのツールでは使えません`);
+    if(/^(if|elif|while|for|else|def)\b[^:]*:\s*\S/.test(l.bare) && !/^(if|elif|while|for|else|def)\b.*:$/.test(l.bare)) throw new ParseError(l.lineNo,'コロン(:)の後ろで改行してください(1 行に書く形は使えません)');
+    if((m=reDef.exec(s))){
+      if(ctx.inDef) throw new ParseError(l.lineNo,'関数の中で関数は定義できません');
+      if(ctx.topLevel!==true) throw new ParseError(l.lineNo,'関数定義は一番外側にだけ書けます(ブロックの中には書けません)');
+      const n=attachComment(node('def', l.lineNo, {name:m[1], params:m[2].trim(), body:null}), l);
+      n.body=parseBlock(indent, {inDef:true, inLoop:false, parentLine:l.lineNo});
+      return n;
+    }
+    if(reElif.test(s)||reElse.test(s)) throw new ParseError(l.lineNo,'対応する if がありません');
+    if((m=reIf.exec(s))){
+      const n=attachComment(node('if', l.lineNo, {cond:m[1], then:null, else:null, elif:false}), l);
+      n.then=parseBlock(indent, {...ctx, parentLine:l.lineNo});
+      // elif / else
+      let cur=n;
+      while(true){
+        const l2=peek();
+        if(!l2||l2.ind!==indent) break;
+        if((m=reElif.exec(l2.stmt))){
+          pos++;
+          const n2=attachComment(node('if', l2.lineNo, {cond:m[1], then:null, else:null, elif:true}), l2);
+          n2.then=parseBlock(indent, {...ctx, parentLine:l2.lineNo});
+          cur.else=[n2]; cur=n2; continue;
+        }
+        if(reElse.test(l2.stmt)){
+          pos++;
+          cur.elseAbove=takeComments(); cur.elseInline=l2.comment;
+          cur.else=parseBlock(indent, {...ctx, parentLine:l2.lineNo});
+          cur.elseLine=l2.lineNo;
+        }
+        break;
+      }
+      return n;
+    }
+    if((m=reWhile.exec(s))){
+      const n=attachComment(node('while', l.lineNo, {cond:m[1], body:null}), l);
+      n.body=parseBlock(indent, {...ctx, inLoop:true, parentLine:l.lineNo});
+      loopElseCheck(indent);
+      return n;
+    }
+    if((m=reForR.exec(s))){
+      const args=splitArgs(m[2]);
+      if(args.length<1||args.length>3||args.some(a=>a==='')) throw new ParseError(l.lineNo,'range() の引数は 1〜3 個です');
+      let start='0', stop, step='1';
+      if(args.length===1) stop=args[0];
+      else { start=args[0]; stop=args[1]; if(args.length===3) step=args[2]; }
+      if(!reNum.test(step)) throw new ParseError(l.lineNo,'range() の増分は符号付きの整数(例 1, -1, 2)だけが使えます');
+      if(parseInt(step,10)===0) throw new ParseError(l.lineNo,'range() の増分に 0 は使えません');
+      const n=attachComment(node('for', l.lineNo, {var:m[1], start, stop, step, rangeText:m[2].trim(), body:null}), l);
+      n.body=parseBlock(indent, {...ctx, inLoop:true, parentLine:l.lineNo});
+      loopElseCheck(indent);
+      return n;
+    }
+    if((m=reForIn.exec(s))){
+      const n=attachComment(node('forin', l.lineNo, {var:m[1], iter:m[2], body:null, counter:null}), l);
+      n.body=parseBlock(indent, {...ctx, inLoop:true, parentLine:l.lineNo});
+      loopElseCheck(indent);
+      return n;
+    }
+    if(/^for\b/.test(s)) throw new ParseError(l.lineNo,'for 文の形が違います(for 変数 in range(...): または for 変数 in 式:)');
+    if(/^(if|while)\b/.test(s)) throw new ParseError(l.lineNo,'条件の後ろにコロン(:)が必要です');
+    if((m=reRet.exec(s))){
+      if(!ctx.inDef) throw new ParseError(l.lineNo,'return は関数の中でだけ使えます');
+      return attachComment(node('return', l.lineNo, {expr:m[1]?m[1].trim():null}), l);
+    }
+    if(s==='break'||s==='continue'){
+      if(!ctx.inLoop) throw new ParseError(l.lineNo, `${s} はループの中でだけ使えます`);
+      return attachComment(node(s, l.lineNo, {}), l);
+    }
+    if(s==='pass') return attachComment(node('pass', l.lineNo, {}), l);
+    if((m=reInputM.exec(s))) return attachComment(node('input', l.lineNo, {vars:m[1].split(',').map(v=>v.trim()), type:m[2], prompt:promptOf(m[3],l.lineNo)}), l);
+    if((m=reInputS.exec(s))) return attachComment(node('input', l.lineNo, {vars:m[1].split(',').map(v=>v.trim()), type:'str', prompt:promptOf(m[2],l.lineNo)}), l);
+    if((m=reInput1.exec(s))) return attachComment(node('input', l.lineNo, {vars:[m[1]], type:m[2], prompt:promptOf(m[3],l.lineNo)}), l);
+    if((m=reInput0.exec(s))) return attachComment(node('input', l.lineNo, {vars:[m[1]], type:'str', prompt:promptOf(m[2],l.lineNo)}), l);
+    if(/\binput\s*\(/.test(s)) throw new ParseError(l.lineNo,'input() は「x = int(input())」「x = float(input())」「x = input()」「a, b = map(int, input().split())」の形だけが使えます');
+    if((m=rePrint.exec(s)) && isSingleCall(l.bare)) return attachComment(node('output', l.lineNo, {args:m[1].trim()}), l);
+    if(/\bprint\s*\(/.test(s)) throw new ParseError(l.lineNo,'print() は単独の文としてだけ使えます');
+    // 定義済み処理の呼び出し判定
+    let isCall=false;
+    for(const d of defs){ if(new RegExp(`(^|[^A-Za-z0-9_.])${d}\\s*\\(`).test(s)){ isCall=true; break; } }
+    if(/^(elif|else|def|if|while|for)\b/.test(s)) throw new ParseError(l.lineNo,'文の形が違います');
+    return attachComment(node(isCall?'call':'process', l.lineNo, {text:s}), l);
+  }
+  function loopElseCheck(indent){ const l2=peek(); if(l2 && l2.ind===indent && reElse.test(l2.stmt)) throw new ParseError(l2.lineNo,'while / for の else は使えません'); }
+  function promptOf(a, lineNo){
+    a=(a||'').trim();
+    if(a==='') return null;
+    return a;
+  }
+  function isTerminal(n){ return n.kind==='return'||n.kind==='break'||n.kind==='continue'; }
+  function termWord(n){ return n.kind; }
+
+  // トップレベル
+  const main=[], funcs=[];
+  while(true){
+    const l=peek();
+    if(!l) break;
+    if(l.ind!==0) throw new ParseError(l.lineNo,'一番外側の文は字下げしないでください');
+    const s=parseStmt(l, 0, {inDef:false, inLoop:false, parentLine:l.lineNo, topLevel:true});
+    if(!s) continue;
+    if(s.kind==='def'){ if(funcs.some(f=>f.name===s.name)) throw new ParseError(s.line,`関数 ${s.name} が二重に定義されています`); s.pos=main.length; funcs.push(s); }
+    else {
+      if(main.length && isTerminal(main[main.length-1])) throw new ParseError(l.lineNo,'実行されない文があります');
+      main.push(s);
+    }
+  }
+  const prog={main, funcs, trailing:pendingComments.splice(0)};
+  assignCounters(prog);
+  return prog;
+}
+
+// for-in のカウンタ名(プログラム中で未使用の名前)を割り当てる
+function assignCounters(prog){
+  const used=new Set();
+  const txt=[];
+  (function walk(b){ for(const n of b){
+    if(n.text) txt.push(n.text); if(n.cond) txt.push(n.cond); if(n.args) txt.push(n.args); if(n.expr) txt.push(n.expr);
+    if(n.vars) n.vars.forEach(v=>used.add(v)); if(n.var) used.add(n.var); if(n.iter) txt.push(n.iter);
+    if(n.start) txt.push(n.start, n.stop);
+    if(n.params) n.params.split(',').forEach(p=>used.add(p.trim().split('=')[0].trim()));
+    if(n.then) walk(n.then); if(n.else) walk(n.else); if(n.body) walk(n.body);
+  }})(prog.main.concat(prog.funcs));
+  for(const t of txt) for(const m of t.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) used.add(m[0]);
+  let k=0;
+  (function walk(b){ for(const n of b){
+    if(n.kind==='forin'){ let name; do{ k++; name = k===1?'i':'i'+k; } while(used.has(name)); used.add(name); n.counter=name; }
+    if(n.then) walk(n.then); if(n.else) walk(n.else); if(n.body) walk(n.body);
+  }})(prog.main.concat(prog.funcs));
+}
+
+/* =====================================================================
+   2. AST → Python テキスト(GUI 編集の逆変換)
+   ===================================================================== */
+function print(prog){
+  const out=[];
+  function cm(n){ return n.inline? '  # '+n.inline : ''; }
+  function emit(b, ind){
+    const pad='    '.repeat(ind);
+    if(!b.length){ out.push(pad+'pass'); return; }
+    for(const n of b){
+      if(n.above) for(const c of n.above) out.push(pad+'# '+c);
+      switch(n.kind){
+        case 'process': case 'call': out.push(pad+n.text+cm(n)); break;
+        case 'input': {
+          const p=n.prompt?n.prompt:'';
+          if(n.vars.length===1){
+            out.push(pad+(n.type==='str'?`${n.vars[0]} = input(${p})`:`${n.vars[0]} = ${n.type}(input(${p}))`)+cm(n));
+          } else {
+            out.push(pad+(n.type==='str'?`${n.vars.join(', ')} = input(${p}).split()`:`${n.vars.join(', ')} = map(${n.type}, input(${p}).split())`)+cm(n));
+          }
+          break; }
+        case 'output': out.push(pad+`print(${n.args})`+cm(n)); break;
+        case 'return': out.push(pad+(n.expr?`return ${n.expr}`:'return')+cm(n)); break;
+        case 'break': case 'continue': case 'pass': out.push(pad+n.kind+cm(n)); break;
+        case 'while': out.push(pad+`while ${n.cond}:`+cm(n)); emit(n.body, ind+1); break;
+        case 'for': {
+          let r;
+          if(n.rangeText) r=n.rangeText;
+          else if(n.step==='1' && n.start==='0') r=n.stop; else if(n.step==='1') r=`${n.start}, ${n.stop}`; else r=`${n.start}, ${n.stop}, ${n.step}`;
+          out.push(pad+`for ${n.var} in range(${r}):`+cm(n)); emit(n.body, ind+1); break; }
+        case 'forin': out.push(pad+`for ${n.var} in ${n.iter}:`+cm(n)); emit(n.body, ind+1); break;
+        case 'if': {
+          let cur=n, first=true;
+          while(cur){
+            out.push(pad+(first?'if':'elif')+` ${cur.cond}:`+cm(cur)); first=false;
+            emit(cur.then, ind+1);
+            if(cur.else && cur.else.length===1 && cur.else[0].kind==='if' && cur.else[0].elif){ cur=cur.else[0]; continue; }
+            if(cur.else){ if(cur.elseAbove) for(const c of cur.elseAbove) out.push(pad+'# '+c); out.push(pad+'else:'+(cur.elseInline?'  # '+cur.elseInline:'')); emit(cur.else, ind+1); }
+            break;
+          }
+          break; }
+        case 'def': if(out.length && out[out.length-1]!=='') out.push(''); out.push(pad+`def ${n.name}(${n.params}):`+cm(n)); emit(n.body, ind+1); out.push(''); break;
+      }
+    }
+  }
+  // 関数定義とメインのフローチャートの文を、元のテキストの順序(def の pos = その前にあるメインのフローチャートの文の数)で書き出す
+  for(let i=0;i<=prog.main.length;i++){
+    const ds = i<prog.main.length? prog.funcs.filter(f=>(f.pos??0)===i) : prog.funcs.filter(f=>(f.pos??0)>=prog.main.length);
+    if(ds.length) emit(ds, 0);
+    if(i<prog.main.length) emit([prog.main[i]], 0);
+  }
+  if(prog.trailing) for(const c of prog.trailing) out.push('# '+c);
+  return out.join('\n').replace(/\n+$/,'')+'\n';
+}
+
+/* =====================================================================
+   3. 記号の文字
+   ===================================================================== */
+function symbolText(n){
+  switch(n.kind){
+    case 'process': case 'call': return n.text;
+    case 'input': return `${TYPE_JA[n.type]} ${n.vars.join(', ')} を入力`;
+    case 'output': return n.args===''?'改行を出力':`${n.args} を出力`;
+    case 'return': return n.expr?`${n.expr} を返す`:null;
+  }
+  return '';
+}
+
+/* =====================================================================
+   4. 配置(構造化配置、判断+戻り線)
+   ===================================================================== */
+const SZ = { W:80, H:40, G:24, L:24, R:14, PAD:10, FONT:14, DIA_ASPECT:1.8, ARROW:8, UNIFORM:true };
+// 図ごとに同種記号の幅をそろえるための固定値(layoutChart1 の 2 回目の配置で設定される)
+let FIX={ w:null, dw:null };
+
+let measureCtx=null;
+function textWidth(s, font){
+  if(!measureCtx){ const c=document.createElement('canvas'); measureCtx=c.getContext('2d'); }
+  measureCtx.font=font||`${SZ.FONT}px "Segoe UI","Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
+  return measureCtx.measureText(s).width;
+}
+
+// 記号の大きさ(同種記号は同寸、文字が長いときだけ幅を W の整数倍に広げる)
+function boxWidth(text, kind){
+  if(FIX.w) return FIX.w;
+  const tw=textWidth(text)+2*SZ.PAD+(kind==='predefined'? 2*(SZ.W/12) : 0);
+  const step=SZ.W/4;                       // 文字が長いときだけ W/4 刻みで広げる(高さは変えない)
+  return Math.max(SZ.W, Math.ceil(tw/step)*step);
+}
+// 条件文を L 行に(空白の位置で)なるべく均等に折り返す
+function wrapLines(text, L){
+  const words=text.split(' ');
+  if(L<=1 || words.length<L) return [text];
+  const total=textWidth(text), target=total/L;
+  const lines=[]; let cur='';
+  for(const w of words){
+    const cand=cur? cur+' '+w : w;
+    if(cur && textWidth(cand)>target*1.05 && lines.length<L-1){ lines.push(cur); cur=w; } else cur=cand;
+  }
+  lines.push(cur);
+  return lines;
+}
+const LINE_H=17;
+// ひし形の大きさ: 比 1.8:1 を保ち、文字が長ければ最大 3 行に折り返して小さく収める。
+// 中心から dy 離れた行で使える幅は w(1 - 2|dy|/h)、h = w/1.8 なので w ≥ 行幅 + 2PAD + 3.6|dy| が必要
+function diamondSize(text){
+  const h0=1.5*SZ.H, w0=Math.round(h0*SZ.DIA_ASPECT);
+  const need=(lines)=>{ const dy=(lines.length-1)*LINE_H/2; return Math.max(...lines.map(l=>textWidth(l)))+2*SZ.PAD+3.6*dy; };
+  if(FIX.dw){
+    let lines=[text];
+    for(let L=1;L<=3;L++){ lines=wrapLines(text,L); if(need(lines)<=FIX.dw) break; }
+    return {w:FIX.dw, h:Math.round(FIX.dw/SZ.DIA_ASPECT), lines};
+  }
+  let best=null;
+  for(let L=1;L<=3;L++){
+    const lines=wrapLines(text,L);
+    let w=Math.max(w0, need(lines)); w=Math.ceil(w/20)*20;
+    if(!best || w<best.w) best={w, h:Math.round(w/SZ.DIA_ASPECT), lines};
+  }
+  return best;
+}
+
+/*
+ 配置の出力:
+  nodes: {id, kind, shape, x, y, w, h, text, lineNo, ast, ports:{in:[x,y], out:[x,y]...}, annot}
+  edges: {pts:[[x,y],...], arrows:[idx,...](終点となる点の番号), label:{text,x,y,anchor}, dashed}
+ 各ブロック・文の配置は「背骨 x=0、入口 (0,0)」の局所座標で行い、親が平行移動する。
+ 戻り値: {h, xmin, xmax, nodes, edges, exit:bool}
+*/
+function layoutProgram(prog, opts){
+  const charts=[];
+  if(prog.main.length || !prog.funcs.length){     // 空のときも「開始→終了」を出して GUI から始められるようにする
+    charts.push(layoutChart('開始', null, '終了', prog.main, {inDef:false}, opts));
+  }
+  for(const f of prog.funcs){
+    charts.push(layoutChart(`${f.name}(${f.params})`, null, `${f.name} 終了`, f.body, {inDef:true, fname:f.name, ast:f}, opts));
+  }
+  return charts;
+}
+
+function layoutChart(startText, params, endText, block, ctx, opts){
+  const c1=layoutChart1(startText, params, endText, block, {...ctx, specials:true}, opts);
+  if(!check([c1]).some(i=>i.includes('交差')||i.includes('内部を通る'))) return c1;
+  return layoutChart1(startText, params, endText, block, {...ctx, specials:false}, opts);   // 安全網: 交差したら全部結合子で描き直す
+}
+function layoutChart1(startText, params, endText, block, ctx, opts){
+  if(SZ.UNIFORM){
+    // 1 回目: 各記号の必要幅を集める → 2 回目: 同種記号の幅を図の中でそろえる(9.1(2) 一様な大きさ)
+    FIX={w:null, dw:null};
+    const probe=layoutChart2(startText, params, endText, block, ctx, opts);
+    let w=0, dw=0;
+    for(const nd of probe.nodes){ if(['process','predefined','data','terminator'].includes(nd.kind)) w=Math.max(w, nd.w); if(nd.kind==='decision') dw=Math.max(dw, nd.w); }
+    FIX={w:w||SZ.W, dw:dw||null};
+    const c=layoutChart2(startText, params, endText, block, ctx, opts);
+    FIX={w:null, dw:null};
+    return c;
+  }
+  return layoutChart2(startText, params, endText, block, ctx, opts);
+}
+function layoutChart2(startText, params, endText, block, ctx, opts){
+  const st={nodes:[], edges:[], loopSeq:0, opts};
+  const start={id:ctx.ast?ctx.ast.id:'start_main', kind:'terminator', x:0, y:0, w:boxWidth(startText), h:SZ.H, text:startText, ast:ctx.ast||null};
+  st.nodes.push(start);
+  let y=SZ.H+SZ.G;
+  const b=layoutBlock(block, {...ctx, st, endText});
+  translate(b, 0, y);
+  joinDown(st, null, SZ.H, y, b);
+  st.nodes.push(...b.nodes); st.edges.push(...b.edges);
+  let xmin=Math.min(-start.w/2, b.xmin), xmax=Math.max(start.w/2, b.xmax);
+  let ytot=y+b.h;
+  if(b.exit){
+    const end={id:'end_'+(ctx.ast?ctx.ast.id:'main'), kind:'terminator', x:0, y:ytot+SZ.G, w:boxWidth(endText), h:SZ.H, text:endText, ast:null};
+    joinDown(st, b.tail, ytot, end.y, null);
+    st.nodes.push(end); ytot=end.y+SZ.H; xmin=Math.min(xmin,-end.w/2); xmax=Math.max(xmax,end.w/2);
+  }
+  return {nodes:st.nodes, edges:st.edges, xmin, xmax, h:ytot, title: ctx.ast? 'def:'+ctx.ast.id : 'main'};
+}
+
+function translate(b, dx, dy){
+  for(const n of b.nodes){ n.x+=dx; n.y+=dy; if(n.annot){ n.annot.x+=dx; n.annot.y+=dy; n.annot.from[0]+=dx; n.annot.from[1]+=dy; } }
+  for(const e of b.edges){ for(const p of e.pts){ p[0]+=dx; p[1]+=dy; } if(e.label){ e.label.x+=dx; e.label.y+=dy; } }
+  if(b.dbreaks) for(const c of b.dbreaks){ c.x0+=dx; c.y+=dy; c.label.x+=dx; c.label.y+=dy; }
+  if(b.dconts) for(const c of b.dconts){ c.x0+=dx; c.y+=dy; c.label.x+=dx; c.label.y+=dy; }
+}
+function edgeLine(st, pts, extra){ const e=Object.assign({pts, arrows:[]}, extra||{}); st.edges.push(e); return e; }
+
+// 矢印は線の終端 1 か所にだけ付ける(9.2.1(2))。
+//  endKind: 'symbol'   記号に入る終端 → 線に標準方向(下・右)でない区間があれば矢印
+//           'junction' 他の線に合流する終端 → 横から入る(最後の区間が水平)なら矢印
+//           'corner'   背骨の角で終わる(後で親が次の記号まで延長する) → 矢印なし
+function hasNonStd(pts){ for(let i=1;i<pts.length;i++){ if(pts[i][1]<pts[i-1][1] || pts[i][0]<pts[i-1][0]) return true; } return false; }
+function markArrows(e, endKind){
+  e.endKind=endKind;
+  const p=e.pts, n=p.length;
+  const lastH = n>=2 && p[n-1][1]===p[n-2][1] && p[n-1][0]!==p[n-2][0];
+  e.arrows = (endKind==='symbol' && hasNonStd(p)) || (endKind==='junction' && lastH) ? [n-1] : [];
+}
+// 背骨を下へつなぐ: prev(前の文の tail 線。なければ (0,yFrom) から新しい線)を、次の文 s の入口 (0,yEntry) まで延ばす。
+// s が先頭に縦線(headEdge)を持てばそれも吸収して 1 本の線にする。
+function joinDown(res, prev, yFrom, yEntry, s, label){
+  const e = prev || {pts:[[0,yFrom]], arrows:[]};
+  if(label) e.label=label;
+  e.pts.push([0,yEntry]);
+  let kind = s? (s.entryKind||'symbol') : 'symbol';
+  if(s && s.headEdge){
+    e.pts.push(...s.headEdge.pts.slice(1));
+    const k=s.edges.indexOf(s.headEdge); if(k>=0) s.edges.splice(k,1);
+    s.headEdge=null; kind='junction';
+  }
+  markArrows(e, kind);
+  if(!prev) res.edges.push(e);
+  return e;
+}
+
+function emptyBlock(){ return {h:0, xmin:0, xmax:0, nodes:[], edges:[], exit:true, breaks:[], conts:[], dbreaks:[], dconts:[]}; }
+
+function realStmts(block){ return block.filter(n=>n.kind!=='pass'); }
+function layoutBlock(block0, ctx){
+  const block=realStmts(block0);
+  const res=emptyBlock();
+  let y=0;
+  let tail=null;
+  for(let i=0;i<block.length;i++){
+    const s=layoutStmt(block[i], ctx);
+    translate(s, 0, y);
+    if(i>0) joinDown(res, tail, y-SZ.G, y, s);
+    else { res.entryKind=s.entryKind||'symbol'; if(s.headEdge){ res.headEdge=s.headEdge; } }
+    tail=s.tail||null;
+    res.nodes.push(...s.nodes); res.edges.push(...s.edges);
+    res.breaks.push(...(s.breaks||[])); res.conts.push(...(s.conts||[]));
+    res.dbreaks.push(...(s.dbreaks||[])); res.dconts.push(...(s.dconts||[]));
+    res.xmin=Math.min(res.xmin, s.xmin); res.xmax=Math.max(res.xmax, s.xmax);
+    y+=s.h;
+    res.exit=s.exit;
+    if(!s.exit){ break; }
+    y+=SZ.G;
+  }
+  res.h=res.exit? y-SZ.G : y;
+  res.tail=res.exit? tail : null;
+  if(block.length===0){ res.h=0; res.exit=true; res.entryKind='corner'; }
+  return res;
+}
+
+function simpleNode(n, kind, text, ctx){
+  const w=boxWidth(text, kind);
+  const node={id:n.id, kind, x:0, y:0, w, h:SZ.H, text, lineNo:n.line, ast:n};
+  const res=emptyBlock();
+  res.nodes.push(node);
+  res.h=SZ.H; res.xmin=-w/2; res.xmax=w/2;
+  addAnnot(res, node, n, ctx);
+  return res;
+}
+
+function addAnnot(res, node, n, ctx){
+  if(!n.comment) return;
+  const tw=textWidth(n.comment, '12px sans-serif');
+  const isD=node.kind==='decision';
+  const ax=node.x+ (isD? node.w/4 : node.w/2);
+  const ay=node.y+ (isD? node.h/4 : node.h/2);
+  const bx=Math.max(res.xmax, node.x+node.w/2)+SZ.L;
+  const by= isD? node.y+node.h/4-12 : ay;          // 判断では出口の線(h/2)とラベルより上に置く
+  node.annot={x:bx, y:by, text:n.comment, from:[ax,ay], bh: isD? 20 : SZ.H-8};
+  res.xmax=Math.max(res.xmax, bx+8+tw+4);
+}
+
+function layoutStmt(n, ctx){
+  switch(n.kind){
+    case 'process': return simpleNode(n,'process',symbolText(n),ctx);
+    case 'call':    return simpleNode(n,'predefined',symbolText(n),ctx);
+    case 'input': {
+      if(n.prompt){
+        // 入力促進文字列は出力として描く(print と同じ)
+        const o=simpleNode({...n, id:n.id+'_p', comment:null}, 'data', `${n.prompt} を出力`, ctx);
+        const i=simpleNode(n,'data',symbolText(n),ctx);
+        return stack([o,i]);
+      }
+      return simpleNode(n,'data',symbolText(n),ctx);
+    }
+    case 'output':  return simpleNode(n,'data',symbolText(n),ctx);
+    case 'return': {
+      const text=n.expr?symbolText(n):ctx.endText;
+      const r=simpleNode(n,'terminator',text,ctx);
+      r.exit=false; return r;
+    }
+    case 'break': case 'continue': {
+      // 出結合子(9.2.2(1) 線の交差を避けるため)
+      const name=(n.kind==='break'?'B':'C')+ctx.loopNo;
+      const node={id:n.id, kind:'connector', x:0, y:0, w:2*SZ.R, h:2*SZ.R, text:name, lineNo:n.line, ast:n, out:true};
+      const res=emptyBlock(); res.nodes.push(node); res.h=2*SZ.R; res.xmin=-SZ.R; res.xmax=SZ.R; res.exit=false;
+      addAnnot(res,node,n,ctx);
+      (n.kind==='break'?res.breaks:res.conts).push({name, loopNo:ctx.loopNo});
+      return res;
+    }
+    case 'if':    return layoutIf(n, ctx);
+    case 'while': return layoutLoop(n, ctx, {cond:n.cond, pre:null, body:n.body, incr:null});
+    case 'for': {
+      const stepN=parseInt(n.step,10);
+      const cond = stepN>0 ? `${n.var} < ${n.stop}` : `${n.var} > ${n.stop}`;
+      const incr = stepN===1 ? `${n.var} = ${n.var} + 1` : stepN===-1 ? `${n.var} = ${n.var} - 1` : stepN>0 ? `${n.var} = ${n.var} + ${stepN}` : `${n.var} = ${n.var} - ${-stepN}`;
+      return layoutLoop(n, ctx, {cond, pre:`${n.var} = ${n.start}`, body:n.body, incr});
+    }
+    case 'forin': {
+      const c=n.counter;
+      return layoutLoop(n, ctx, {cond:`${c} < len(${n.iter})`, pre:`${c} = 0`, body:n.body, incr:`${c} = ${c} + 1`, first:`${n.var} = ${n.iter}[${c}]`});
+    }
+  }
+  throw new Error('unknown kind '+n.kind);
+}
+
+function stack(parts){
+  const res=emptyBlock(); let y=0;
+  parts.forEach((p,i)=>{ translate(p,0,y); if(i>0) joinDown(res, null, y-SZ.G, y, p); res.nodes.push(...p.nodes); res.edges.push(...p.edges); res.xmin=Math.min(res.xmin,p.xmin); res.xmax=Math.max(res.xmax,p.xmax); y+=p.h+SZ.G; res.exit=p.exit; res.breaks.push(...p.breaks); res.conts.push(...p.conts); res.dbreaks.push(...p.dbreaks); res.dconts.push(...p.dconts); });
+  res.h=y-SZ.G; return res;
+}
+
+function decisionNode(n, cond, ctx, idSuffix){
+  const {w,h,lines}=diamondSize(cond);
+  return {id:n.id+(idSuffix||''), kind:'decision', x:0, y:0, w, h, text:cond, lines, lineNo:n.line, ast:n};
+}
+
+function layoutIf(n, ctx){
+  const res=emptyBlock();
+  const d=decisionNode(n, n.cond, ctx);
+  res.nodes.push(d);
+  addAnnot(res, d, n, ctx);
+  const yd=d.h;                      // ひし形の下頂点
+  // 特例: 浅い形の「if 条件: break」「if 条件: continue」は Yes を右/左に出して直線で描く(9.2.2(1) の結合子を避ける)
+  const thenR=realStmts(n.then);
+  if(ctx.specials && thenR.length===1 && !n.else && (thenR[0].kind==='break' && ctx.directBreak || thenR[0].kind==='continue' && ctx.directCont)){
+    const isBreak=thenR[0].kind==='break';
+    res.xmin=-d.w/2; res.xmax=Math.max(res.xmax,d.w/2);
+    const yNo=d.h/2;
+    if(isBreak) res.dbreaks.push({x0:d.w/2, y:yNo, loopNo:ctx.loopNo, label:{text:'Yes',x:d.w/2+6,y:yNo-5,anchor:'start'}});
+    else { res.dconts.push({x0:-d.w/2, y:yNo, loopNo:ctx.loopNo, label:{text:'Yes',x:-d.w/2-6,y:yNo-5,anchor:'end'}}); res.xmin=-d.w/2-30; }
+    res.edges.push({pts:[[0,yd],[0,yd+SZ.G/2]],arrows:[],label:{text:'No',x:6,y:yd+14,anchor:'start'}});
+    res.h=yd+SZ.G/2; res.exit=true;
+    return res;
+  }
+  const thenB=layoutBlock(n.then, {...ctx, directBreak:false});
+  const elseB=n.else? layoutBlock(n.else, {...ctx, directBreak:false, directCont:false}) : null;
+  // then: 真下
+  const yThen=yd+SZ.G;
+  translate(thenB, 0, yThen);
+  joinDown(res, null, yd, yThen, thenB, {text:'Yes', x:6, y:yd+14, anchor:'start'});
+  res.nodes.push(...thenB.nodes); res.edges.push(...thenB.edges);
+  res.breaks.push(...thenB.breaks); res.conts.push(...thenB.conts); res.dbreaks.push(...thenB.dbreaks); res.dconts.push(...thenB.dconts);
+  res.xmin=Math.min(res.xmin, -d.w/2, thenB.xmin);
+  // No: 右レーン
+  const rightOfThen=Math.max(res.xmax, d.w/2, thenB.xmax);
+  let xN;
+  let elseBottom=0, thenBottom=yThen+thenB.h;
+  const yNo=d.h/2;
+  if(elseB){
+    xN=rightOfThen + SZ.L + Math.max(0, -elseB.xmin) ;
+    // else ブロックの背骨 x = xN。ひし形右頂点から右へ、下へ。
+    const yElse=yd+SZ.G;
+    translate(elseB, xN, yElse);
+    const ne={pts:[[d.w/2,yNo],[xN,yNo]], arrows:[], label:{text:'No', x:d.w/2+6, y:yNo-5, anchor:'start'}};
+    ne.pts.push([xN,yElse]);
+    let nk=elseB.entryKind||'symbol';
+    if(elseB.headEdge){ ne.pts.push(...elseB.headEdge.pts.slice(1)); const k=elseB.edges.indexOf(elseB.headEdge); if(k>=0) elseB.edges.splice(k,1); elseB.headEdge=null; nk='junction'; }
+    markArrows(ne, nk); res.edges.push(ne);
+    res.nodes.push(...elseB.nodes); res.edges.push(...elseB.edges);
+    res.breaks.push(...elseB.breaks); res.conts.push(...elseB.conts); res.dbreaks.push(...elseB.dbreaks); res.dconts.push(...elseB.dconts);
+    elseBottom=yElse+elseB.h;
+    res.xmax=Math.max(res.xmax, xN+elseB.xmax);
+  } else {
+    xN=rightOfThen + SZ.L;
+    res.xmax=Math.max(res.xmax, xN);
+  }
+  // 合流
+  const thenExit=thenB.exit, elseExit=elseB?elseB.exit:true;
+  if(thenExit && elseExit){
+    const ym=Math.max(thenBottom, elseBottom)+SZ.G;
+    // Yes 側の幹は合流点まで(縦に入るので矢印なし)
+    if(thenB.tail){ thenB.tail.pts.push([0,ym]); markArrows(thenB.tail,'junction'); }
+    else res.edges.push({pts:[[0,thenBottom],[0,ym]], arrows:[]});
+    // No 側は横から合流(矢印)
+    const e= elseB && elseB.tail ? elseB.tail : {pts: elseB? [[xN,elseBottom]] : [[d.w/2,yNo],[xN,yNo]], arrows:[], label: elseB?null:{text:'No', x:d.w/2+6, y:yNo-5, anchor:'start'}};
+    e.pts.push([xN,ym],[0,ym]);
+    markArrows(e, 'junction');
+    if(!(elseB && elseB.tail)) res.edges.push(e);
+    res.h=ym; res.exit=true; res.tail=null;
+  } else if(thenExit && !elseExit){
+    // Yes 側だけが続く: No 側(終端で終わる)の高さより下から続ける
+    const yb=Math.max(thenBottom, elseBottom);
+    res.h=yb; res.exit=true;
+    if(yb>thenBottom){
+      if(thenB.tail){ thenB.tail.pts.push([0,yb]); markArrows(thenB.tail,'corner'); res.tail=thenB.tail; }
+      else { const e={pts:[[0,thenBottom],[0,yb]], arrows:[]}; markArrows(e,'corner'); res.edges.push(e); res.tail=e; }
+    } else res.tail=thenB.tail||null;
+  } else if(!thenExit && elseExit){
+    // else 側だけが続く: 右から戻って背骨を続ける(角で終わるので親が次の記号まで延ばす)
+    const ym=Math.max(thenBottom, elseBottom)+SZ.G;
+    const e= elseB && elseB.tail ? elseB.tail : {pts: elseB? [[xN,elseBottom]] : [[d.w/2,yNo],[xN,yNo]], arrows:[], label: elseB?null:{text:'No', x:d.w/2+6, y:yNo-5, anchor:'start'}};
+    e.pts.push([xN,ym],[0,ym]);
+    markArrows(e, 'corner');
+    if(!(elseB && elseB.tail)) res.edges.push(e);
+    res.h=ym; res.exit=true; res.tail=e;
+  } else {
+    res.h=Math.max(thenBottom, elseBottom); res.exit=false;
+  }
+  return res;
+}
+
+/*
+ ループ(判断+戻り線)
+   [pre]            i = a           (for のみ)
+   ●  ← 合流点(戻り線が入る)      ← continue 結合子(while)
+   ◇ cond  --No--> 右レーン → 下へ → 合流して続き   ← break 結合子
+   |Yes
+   [first]          x = L[i]        (for-in のみ)
+   body
+   ●  ← continue 結合子(for)
+   [incr]           i = i + 1       (for のみ)
+   └─ 左レーンへ → 上へ → 合流点へ
+*/
+function layoutLoop(n, ctx, spec){
+  const loopNo=++ctx.st.loopSeq;
+  const res=emptyBlock();
+  let y=0;
+  const put=(b)=>{ translate(b,0,y); res.nodes.push(...b.nodes); res.edges.push(...b.edges); res.xmin=Math.min(res.xmin,b.xmin); res.xmax=Math.max(res.xmax,b.xmax); y+=b.h; };
+  let bodyB=layoutBlock(spec.body, {...ctx, loopNo, directBreak:true, directCont:true});
+  if(spec.incr && bodyB.conts.some(c=>c.loopNo===loopNo) && bodyB.dconts.some(c=>c.loopNo===loopNo)){
+    // for で結合子の continue と直線の continue が混在すると線が結合子を通るので、すべて結合子にする
+    bodyB=layoutBlock(spec.body, {...ctx, loopNo, directBreak:true, directCont:false});
+  }
+  const hasCont=bodyB.conts.some(c=>c.loopNo===loopNo);
+  const hasBreak=bodyB.breaks.some(c=>c.loopNo===loopNo);
+  const dBreaks=bodyB.dbreaks.filter(c=>c.loopNo===loopNo), dConts=bodyB.dconts.filter(c=>c.loopNo===loopNo);
+  // 本体以外のループ由来の結合子は親へ渡す(break/continue は常に最も内側のループが対象なので通常は空)
+  res.breaks.push(...bodyB.breaks.filter(c=>c.loopNo!==loopNo));
+  res.conts.push(...bodyB.conts.filter(c=>c.loopNo!==loopNo));
+  let yCont=null;             // continue 入結合子が背骨に入る y
+  if(spec.pre){
+    const p=simpleNode({...n, id:n.id+'_pre', comment:null}, 'process', spec.pre, ctx);
+    put(p);
+  }
+  res.entryKind = spec.pre? 'symbol' : 'junction';
+  if(!spec.incr && hasCont){      // while: 合流点の上の線に continue が入る
+    const gap=2*SZ.G;
+    const he={pts:[[0,y],[0,y+gap]],arrows:[]}; res.edges.push(he); if(!spec.pre) res.headEdge=he; yCont=y+gap/2; y+=gap;
+  } else if(spec.pre){
+    res.edges.push({pts:[[0,y],[0,y+SZ.G]],arrows:[]}); y+=SZ.G;
+  }
+  const yJ=y;                                   // 戻り線の合流点
+  const d=decisionNode(n, spec.cond, ctx);
+  const dTop=yJ+SZ.G;
+  d.y=dTop;
+  res.nodes.push(d);
+  addAnnot(res, d, n, ctx);
+  res.edges.push({pts:[[0,yJ],[0,dTop]],arrows:[]});
+  res.xmin=Math.min(res.xmin,-d.w/2); res.xmax=Math.max(res.xmax,d.w/2);
+  y=dTop+d.h;
+  const yNo=dTop+d.h/2;
+  const yesLabel={text:'Yes',x:6,y:y+14,anchor:'start'};
+  const yYes=y;
+  y+=SZ.G;
+  if(spec.first){
+    const f=simpleNode({...n, id:n.id+'_first', comment:null}, 'process', spec.first, ctx);
+    translate(f,0,y); joinDown(res, null, yYes, y, f, yesLabel); res.nodes.push(...f.nodes); res.edges.push(...f.edges); res.xmin=Math.min(res.xmin,f.xmin); res.xmax=Math.max(res.xmax,f.xmax); y+=f.h;
+    translate(bodyB,0,y+SZ.G); joinDown(res, null, y, y+SZ.G, bodyB); y+=SZ.G;
+  } else {
+    translate(bodyB,0,y); joinDown(res, null, yYes, y, bodyB, yesLabel);
+  }
+  res.nodes.push(...bodyB.nodes); res.edges.push(...bodyB.edges); res.xmin=Math.min(res.xmin,bodyB.xmin); res.xmax=Math.max(res.xmax,bodyB.xmax); y+=bodyB.h;
+  let hasBack = bodyB.exit;
+  let bodyTail = bodyB.exit? bodyB.tail : null;   // 本体末尾の線(角で終わっている)
+  const anyCont = hasCont || dConts.length>0;
+  if(spec.incr && (bodyB.exit || anyCont)){
+    const gap = hasCont? 2*SZ.G : SZ.G;
+    const inc=simpleNode({...n, id:n.id+'_incr', comment:null}, 'process', spec.incr, ctx);
+    translate(inc,0,y+gap);
+    if(anyCont){ yCont=y+gap/2; if(bodyB.exit) joinDown(res, bodyTail, y, y+gap, inc); else res.edges.push({pts:[[0,yCont],[0,y+gap]],arrows:[]}); }
+    else joinDown(res, bodyTail, y, y+gap, inc);
+    bodyTail=null;
+    y+=gap;
+    res.nodes.push(...inc.nodes); res.edges.push(...inc.edges); res.xmin=Math.min(res.xmin,inc.xmin); res.xmax=Math.max(res.xmax,inc.xmax); y+=inc.h;
+    hasBack=true;
+  }
+  const yBottom=y;
+  // 左レーン(戻り線)と continue 入結合子
+  let xL=res.xmin - SZ.L;
+  if(hasCont){
+    const cx = -(SZ.W/2 + SZ.L + SZ.R);  // 背骨の左、戻り線より右
+    const cnode={id:n.id+'_cin', kind:'connector', x:cx, y:yCont-SZ.R, w:2*SZ.R, h:2*SZ.R, text:'C'+loopNo, ast:null, in:true};
+    res.nodes.push(cnode);
+    const e={pts:[[cx+SZ.R, yCont],[0,yCont]], arrows:[]};
+    markArrows(e,'junction'); res.edges.push(e);
+    xL=Math.min(xL, cx-SZ.R-SZ.L);
+  }
+  if(dConts.length){
+    if(spec.incr){
+      // for: 増分の手前へ。本体の左にレーンを取り、下へ下りて背骨に入る
+      const xC=xL;                       // 本体の左端より外側
+      xL=xC-SZ.L;
+      for(const c of dConts){ const e={pts:[[c.x0,c.y],[xC,c.y],[xC,yCont],[0,yCont]],arrows:[],label:c.label}; markArrows(e,'junction'); res.edges.push(e); }
+    } else {
+      // while: 戻り線の縦線に合流する(条件の手前へ戻る)
+      for(const c of dConts){ const e={pts:[[c.x0,c.y],[xL,c.y]],arrows:[],label:c.label}; markArrows(e,'junction'); res.edges.push(e); }
+    }
+  }
+  if(hasBack){
+    // 戻り線: 本体末尾の線が角で終わっていればそれに続ける
+    const back= bodyTail || {pts:[[0,yBottom]], arrows:[]};
+    back.pts.push([0,yBottom+SZ.G],[xL,yBottom+SZ.G],[xL,yJ],[0,yJ]);
+    markArrows(back,'junction'); if(!bodyTail) res.edges.push(back);
+  } else if(!spec.incr && dConts.length){
+    const yLow=Math.max(...dConts.map(c=>c.y));
+    const back={pts:[[xL,yLow],[xL,yJ],[0,yJ]], arrows:[]};
+    markArrows(back,'junction'); res.edges.push(back);
+  }
+  // 右レーン(No → 抜ける)と break 入結合子
+  const xR=res.xmax + SZ.L;
+  const yExit=(hasBack? yBottom+SZ.G : yBottom) + SZ.G;
+  const ex={pts:[[d.w/2,yNo],[xR,yNo],[xR,yExit],[0,yExit]], arrows:[], label:{text:'No',x:d.w/2+6,y:yNo-5,anchor:'start'}};
+  markArrows(ex,'corner'); res.edges.push(ex); res.tail=ex;
+  for(const c of dBreaks){ const e={pts:[[c.x0,c.y],[xR,c.y]],arrows:[],label:c.label}; markArrows(e,'junction'); res.edges.push(e); }
+  if(hasBreak){
+    const bx=xR+SZ.L+SZ.R;
+    const bnode={id:n.id+'_bin', kind:'connector', x:bx, y:yExit-SZ.R, w:2*SZ.R, h:2*SZ.R, text:'B'+loopNo, ast:null, in:true};
+    res.nodes.push(bnode);
+    const e={pts:[[bx-SZ.R,yExit],[xR,yExit]],arrows:[]}; markArrows(e,'junction'); res.edges.push(e);
+    res.xmax=Math.max(res.xmax, bx+SZ.R);
+  } else res.xmax=Math.max(res.xmax, xR);
+  res.xmin=Math.min(res.xmin, xL);
+  res.h=yExit; res.exit=true;
+  return res;
+}
+
+/* =====================================================================
+   5. SVG 描画
+   ===================================================================== */
+const SVG_NS='http://www.w3.org/2000/svg';
+function el(tag, attrs, parent){ const e=document.createElementNS(SVG_NS, tag); for(const k in attrs) e.setAttribute(k, attrs[k]); if(parent) parent.appendChild(e); return e; }
+
+function shapePath(nd){
+  const {x,y,w,h}=nd; // x,y: 中心 x、上端 y(長方形系)。decision も同じ規約(x 中心、y 上端)
+  const l=x-w/2, r=x+w/2, t=y, b=y+h;
+  switch(nd.kind){
+    case 'process': case 'predefined': return `M${l},${t} H${r} V${b} H${l} Z`;
+    case 'data': { const s=SZ.H/4; return `M${l+s},${t} H${r} L${r-s},${b} H${l} Z`; }
+    case 'terminator': { const rr=h/2; return `M${l+rr},${t} H${r-rr} A${rr},${rr} 0 0 1 ${r-rr},${b} H${l+rr} A${rr},${rr} 0 0 1 ${l+rr},${t} Z`; }
+    case 'decision': return `M${x},${t} L${r},${y+h/2} L${x},${b} L${l},${y+h/2} Z`;
+    case 'connector': return `M${x-w/2},${y+h/2} a${w/2},${w/2} 0 1 0 ${w},0 a${w/2},${w/2} 0 1 0 ${-w},0`;
+  }
+}
+
+const SVG_STYLE=`.shape{fill:#fff;stroke:#000;stroke-width:1.5}.ln{fill:none;stroke:#000;stroke-width:1.5}.ln.dash{stroke-dasharray:5,4}.ar{fill:#000;stroke:none}.lbl{font-size:12px}.id{font-size:10px;fill:#444}.desc{font-size:11px;fill:#000}.annot{font-size:12px}.frame{fill:none;stroke:#bbb;stroke-width:1}.pageno{font-size:11px;fill:#666}`;
+const SVG_FONT='"Segoe UI","Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif';
+
+function drawChart(g, nodes, edges, opts){
+  for(const e of edges){
+    const d=e.pts.map((p,i)=>(i?'L':'M')+p[0]+','+p[1]).join(' ');
+    el('path',{d, class:'ln'+(e.dashed?' dash':'')},g);
+    for(const ai of e.arrows){
+      const p=e.pts[ai], q=e.pts[ai-1];
+      const dx=Math.sign(p[0]-q[0]), dy=Math.sign(p[1]-q[1]);
+      const a=SZ.ARROW, b=a*0.45;
+      let pts;
+      if(dx!==0) pts=`${p[0]},${p[1]} ${p[0]-dx*a},${p[1]-b} ${p[0]-dx*a},${p[1]+b}`;
+      else pts=`${p[0]},${p[1]} ${p[0]-b},${p[1]-dy*a} ${p[0]+b},${p[1]-dy*a}`;
+      el('polygon',{points:pts, class:'ar'},g);
+    }
+    if(e.label){ const t=el('text',{x:e.label.x,y:e.label.y,'text-anchor':e.label.anchor,class:'lbl'},g); t.textContent=e.label.text; }
+  }
+  for(const nd of nodes){
+    const gs=el('g',{class:'sym', 'data-id':nd.id},g);
+    el('path',{d:shapePath(nd), class:'shape'},gs);
+    if(nd.kind==='predefined'){ const s=SZ.W/12; el('path',{d:`M${nd.x-nd.w/2+s},${nd.y} V${nd.y+nd.h} M${nd.x+nd.w/2-s},${nd.y} V${nd.y+nd.h}`,class:'ln'},gs); }
+    if(nd.lines && nd.lines.length>1){
+      const n=nd.lines.length;
+      nd.lines.forEach((ln,i)=>{ const t=el('text',{x:nd.x, y:nd.y+nd.h/2+(i-(n-1)/2)*LINE_H, 'text-anchor':'middle', 'dominant-baseline':'central'},gs); t.textContent=ln; });
+    } else if(nd.text){ const t=el('text',{x:nd.x, y:nd.y+nd.h/2, 'text-anchor':'middle', 'dominant-baseline':'central'},gs); t.textContent=nd.text; }
+    if(opts.lineNo && nd.lineNo){ const t=el('text',{x:nd.x-nd.w/2, y:nd.y-3, class:'id'},gs); t.textContent=nd.lineNo; }
+    if(nd.annot && nd.annot.text){
+      const a=nd.annot, bh=a.bh||SZ.H-8;
+      if(a.side==='below'){
+        const t=el('text',{x:nd.x, y:nd.y+nd.h+12, 'text-anchor':'middle', class:'annot'},gs); t.textContent=a.text;
+      } else if(a.side==='left'){
+        el('path',{d:`M${a.from[0]},${a.from[1]} L${a.x},${a.y}`, class:'ln dash'},gs);
+        el('path',{d:`M${a.x-8},${a.y-bh/2} H${a.x} V${a.y+bh/2} H${a.x-8}`, class:'ln'},gs);
+        const t=el('text',{x:a.x-8, y:a.y, 'text-anchor':'end', 'dominant-baseline':'central', class:'annot'},gs); t.textContent=a.text;
+      } else {
+        el('path',{d:`M${a.from[0]},${a.from[1]} L${a.x},${a.y}`, class:'ln dash'},gs);
+        el('path',{d:`M${a.x+8},${a.y-bh/2} H${a.x} V${a.y+bh/2} H${a.x+8}`, class:'ln'},gs);
+        const t=el('text',{x:a.x+8, y:a.y, 'dominant-baseline':'central', class:'annot'},gs); t.textContent=a.text;
+      }
+    }
+  }
+}
+function newSVG(W,H){
+  const svg=el('svg',{xmlns:SVG_NS, width:W, height:H, viewBox:`0 0 ${W} ${H}`, 'font-family':SVG_FONT, 'font-size':SZ.FONT});
+  const style=el('style',{},svg); style.textContent=SVG_STYLE;
+  el('rect',{x:0,y:0,width:W,height:H,fill:'#fff'},svg);
+  return svg;
+}
+
+// 分割なし: 図を横に並べた 1 枚
+function renderSVG(charts, opts){
+  opts=opts||{};
+  const M=30, CH_GAP=60;
+  let x=M, totalH=0;
+  const placed=[];
+  for(const c of charts){ placed.push({c, ox:x - c.xmin, oy:M}); x+= (c.xmax-c.xmin)+CH_GAP; totalH=Math.max(totalH, c.h); }
+  const W=Math.round(x-CH_GAP+M), H=Math.round(totalH+2*M);
+  const svg=newSVG(W,H);
+  for(const {c,ox,oy} of placed){
+    const g=el('g',{transform:`translate(${ox},${oy})`},svg);
+    drawChart(g, c.nodes, c.edges, opts);
+  }
+  return svg;
+}
+
+/* ---- ページ分割(9.2.2 結合子によるページ間の接続) ----
+   図を横の切断線で分け、切断線をまたぐ線ごとに出結合子・入結合子の対を入れる。
+   切断線は、記号・ラベル・水平線にかからない高さから選ぶ。切断位置の下を Δ だけ下げて結合子の置き場を作る。 */
+const PAGE={ A4P:{w:794,h:1123}, A4L:{w:1123,h:794}, M:40 };
+function paginate(chart, usableH){
+  const nodes=chart.nodes, edges=chart.edges;
+  const R=SZ.R, half=SZ.G+2*R+40, D=2*half;      // 上の片: 結合子 + その下に注釈、下の片: 注釈 + その下に結合子
+  const LOW=40;                                      // 下ページの結合子の上端(yc からの距離)
+  const pages=[]; let y0=0, seq=0, h=chart.h;
+  const clear=(y)=>{
+    for(const nd of nodes){ if(y>nd.y-6 && y<nd.y+nd.h+6) return false; if(nd.annot && Math.abs(nd.annot.y-y)<SZ.H/2) return false; }
+    for(const e of edges){
+      if(e.label && y>e.label.y-12 && y<e.label.y+4) return false;
+      for(let i=1;i<e.pts.length;i++){ const a=e.pts[i-1], b=e.pts[i]; if(a[1]===b[1] && Math.abs(a[1]-y)<6) return false; }
+    }
+    return true;
+  };
+  let guard=0;
+  while(h - y0 > usableH && guard++<200){
+    let cut=null;
+    for(let y=Math.floor(y0+usableH-half); y>y0+(usableH-half)*0.3; y-=2){ if(clear(y)){ cut=y; break; } }
+    if(cut===null){ for(let y=Math.floor(y0+(usableH-half)*0.3); y>y0+(usableH-half)*0.15; y-=2){ if(clear(y)){ cut=y; break; } } }   // 近くに空きがなければ少し上まで探す(短すぎる短冊は作らない)
+    if(cut===null){ chart.overflow=true; break; }   // それでも見つからない(記号が隙間なく並ぶ): このページを縦に伸ばして描く
+    // 下を D だけ下げる
+    for(const nd of nodes){ if(nd.y>=cut){ nd.y+=D; if(nd.annot){ nd.annot.y+=D; nd.annot.from[1]+=D; } } else if(nd.annot && nd.annot.y>=cut){ nd.annot.y+=D; nd.annot.from[1]+=D; } }
+    for(const e of edges){ for(const p of e.pts){ if(p[1]>=cut) p[1]+=D; } if(e.label && e.label.y>=cut) e.label.y+=D; }
+    h+=D;
+    const yc=cut+half;
+    const pageIdx=pages.length;
+    // 切断線をまたぐ線を分ける(1 本の線が何度またいでも、片ごとに繰り返し分ける)
+    const add=[], relocs=[];
+    const work=edges.splice(0, edges.length);
+    while(work.length){
+      const e=work.pop();
+      if(e.dashed){ add.push(e); continue; }
+      let i=-1;
+      for(let j=1;j<e.pts.length;j++){ const a=e.pts[j-1][1], b=e.pts[j][1]; if((a<yc && b>yc)||(a>yc && b<yc)){ i=j; break; } }
+      if(i<0){ add.push(e); continue; }
+      const x=e.pts[i][0], down=e.pts[i-1][1]<yc;
+      const name=String(++seq);
+      const uy=cut+SZ.G, ly=yc+LOW;
+      // 注釈(ページ参照 9.2.2(2))は、線のない側(上の片では結合子の下、下の片では結合子の上)に斜めの破線で付ける
+      const upperC={id:'pg'+seq+'u', kind:'connector', x, y:uy, w:2*R, h:2*R, text:name, out:down, in:!down, annot:{x:x+R+10, y:uy+2*R+20, from:[x+R*0.71, uy+R+R*0.71], text:'', pageRef:pageIdx+1, dir: down?'to':'from'}};
+      const lowerC={id:'pg'+seq+'l', kind:'connector', x, y:ly, w:2*R, h:2*R, text:name, out:!down, in:down, annot:{x:x+R+10, y:yc+20, from:[x+R*0.71, ly+R-R*0.71], text:'', pageRef:pageIdx, dir: down?'from':'to'}};
+      nodes.push(upperC, lowerC);
+      const up={pts:e.pts.slice(0,i).concat([[x,uy]]), arrows:[], label:null};
+      const lo={pts:[[x,ly+2*R]].concat(e.pts.slice(i)), arrows:[], label:null};
+      if(e.label){ if(e.label.y<yc) up.label=e.label; else lo.label=e.label; }
+      if(down){ markArrows(up,'symbol'); markArrows(lo, e.endKind||'symbol'); }
+      else { // 上向き: 下の片が出結合子で終わり、上の片は入結合子から始まる
+        up.pts=[[x,uy]].concat(e.pts.slice(i)); lo.pts=e.pts.slice(0,i).concat([[x,ly+2*R]]);
+        if(e.label){ up.label=null; lo.label=null; if(e.label.y<yc) up.label=e.label; else lo.label=e.label; }
+        markArrows(lo,'symbol'); markArrows(up, e.endKind||'symbol');
+      }
+      if(down) relocs.push({lo, lowerC});
+      work.push(up,lo);
+    }
+    edges.push(...add);
+    // 下の片が「結合子 → 下へ → 横へ → 背骨」の形なら、入結合子を横線の行き先の真上に移してまっすぐ下ろす
+    for(const {lo, lowerC} of relocs) relocateDown(lo, lowerC, edges, nodes);
+    pages.push({y0, y1:yc}); y0=yc;
+  }
+  pages.push({y0, y1:h});
+  chart.h=h;
+  for(const pg of pages){
+    pg.nodes=nodes.filter(nd=>nd.y>=pg.y0 && nd.y<pg.y1);
+    pg.edges=edges.filter(e=>e.pts[0][1]>=pg.y0 && e.pts[0][1]<=pg.y1 && e.pts[e.pts.length-1][1]>=pg.y0 && e.pts[e.pts.length-1][1]<=pg.y1);
+  }
+  return pages;
+}
+
+// 入結合子の付け替え: lo.pts = [ (x,yTop), (x,yA), (x2,yA), ... ] で、x2 の縦線 yTop〜yA に他の線・記号が無いとき
+function relocateDown(lo, C, edges, nodes){
+  const p=lo.pts;
+  if(p.length<3 || p[0][0]!==p[1][0] || p[1][1]!==p[2][1] || p[2][0]===p[1][0]) return;
+  const x2=p[2][0], yTop=p[0][1], yA=p[1][1];
+  const between=(v,a,b)=>v>=Math.min(a,b)-0.5 && v<=Math.max(a,b)+0.5;
+  for(const e of edges){
+    if(e===lo || e.dashed) continue;
+    for(let i=0;i<e.pts.length;i++){
+      const a=e.pts[i];
+      if(Math.abs(a[0]-x2)<0.5 && between(a[1], C.y, yA)) return;          // 他の線の端点・角がその縦線上にある
+      if(i>0){ const b=e.pts[i-1];
+        if(a[1]===b[1] && between(a[1], C.y, yA-0.5) && between(x2, a[0], b[0])) return;   // 横線が横切る
+        if(a[0]===b[0] && Math.abs(a[0]-x2)<0.5 && Math.max(a[1],b[1])>C.y && Math.min(a[1],b[1])<yA) return; } // 縦線が重なる
+    }
+  }
+  for(const nd of nodes){ if(nd===C) continue; if(nd.x-nd.w/2-4<x2 && x2<nd.x+nd.w/2+4 && nd.y+nd.h>C.y-4 && nd.y<yA) return; }
+  const dx=x2-C.x;
+  C.x=x2; if(C.annot){ C.annot.x+=dx; C.annot.from[0]+=dx; }
+  lo.pts=[[x2,yTop]].concat(p.slice(2).map((q,i)=> i===0? [x2,yA] : q));
+  // 先頭の [x2,yA] は縦線の途中点として残す(折れのない直線)
+  markArrows(lo, lo.endKind||'symbol');
+}
+
+// 分割あり: 図を縦に短冊(ページの高さ)に切り、幅に余裕があれば短冊を 1 ページに横に並べる(左から右へ続く)。
+// 関数ごとに新しいページから始める。戻り値は 1 ページ 1 枚の SVG の配列
+function renderPaged(charts, opts, size){
+  const M=PAGE.M, uw=size.w-2*M, uh=size.h-2*M-20, COL_GAP=50;
+  const pages=[];   // {items:[{c, strip, scale, x}]}
+  for(const c of charts){
+    const w=c.xmax-c.xmin;
+    const scale=Math.min(1, uw/w);
+    const strips=paginate(c, uh/scale);
+    const cols=Math.max(1, Math.floor((uw+COL_GAP)/(w*scale+COL_GAP)));
+    for(let i=0;i<strips.length;i++){
+      const col=i%cols;
+      if(col===0) pages.push({items:[]});
+      const pg=pages[pages.length-1];
+      pg.items.push({c, strip:strips[i], scale, x:M+col*(w*scale+COL_GAP), stripIdx:i, pageIdx:pages.length-1});
+    }
+  }
+  // 短冊 → ページ番号の対応(注釈のページ参照用)
+  const pageOf=new Map();
+  for(const pg of pages) for(const it of pg.items) pageOf.set(it.c.title+'#'+it.stripIdx, it.pageIdx);
+  const N=pages.length;
+  renderPaged.warning = charts.some(c=>c.overflow)? '切断位置が見つからない図があるため、そのページは A4 より縦に長くなっています(記号が隙間なく並んでいます)' : null;
+  return pages.map((pg,i)=>{
+    const needH=Math.max(size.h, ...pg.items.map(it=> M + (it.strip.y1-it.strip.y0)*it.scale + M + 20));
+    const svg=newSVG(size.w,needH);
+    el('rect',{x:0.5,y:0.5,width:size.w-1,height:needH-1,class:'frame screen-only'},svg);
+    const t=el('text',{x:size.w/2,y:needH-M/2,'text-anchor':'middle',class:'pageno screen-only'},svg); t.textContent=`${i+1} / ${N}`;
+    for(const it of pg.items){
+      const {c, strip, scale, x}=it;
+      for(const nd of strip.nodes){ if(nd.annot && nd.annot.pageRef!==undefined){
+        const target=pageOf.get(c.title+'#'+nd.annot.pageRef);
+        if(opts.ref==='page' && target!==undefined && target!==i) nd.annot.text = nd.annot.dir==='to'? `${target+1} ページへ` : `${target+1} ページから`;
+        else if(opts.ref==='fig') nd.annot.text = nd.annot.dir==='to'? '次の図へ' : '前の図から';
+        else nd.annot.text='';
+      } }
+      const g=el('g',{transform:`translate(${x},${M}) scale(${scale}) translate(${-c.xmin},${-strip.y0})`},svg);
+      drawChart(g, strip.nodes, strip.edges, opts);
+    }
+    return svg;
+  });
+}
+// 複数ページを 1 つの SVG に縦に並べる(保存用)
+function composePages(svgs){
+  const W=svgs[0].width.baseVal.value, H=svgs[0].height.baseVal.value, gap=20;
+  const svg=el('svg',{xmlns:SVG_NS, width:W, height:svgs.length*(H+gap)-gap, viewBox:`0 0 ${W} ${svgs.length*(H+gap)-gap}`});
+  svgs.forEach((p,i)=>{ const c=p.cloneNode(true); c.setAttribute('x',0); c.setAttribute('y',i*(H+gap)); svg.appendChild(c); });
+  return svg;
+}
+
+/* =====================================================================
+   6. 自己検査(配置結果が JIS の約束を満たすか)
+   ===================================================================== */
+function check(charts){
+  const issues=[];
+  for(const c of charts){
+    const segs=[];
+    for(const e of c.edges){
+      if(e.dashed) continue;
+      for(let i=1;i<e.pts.length;i++){
+        const a=e.pts[i-1], b=e.pts[i];
+        if(a[0]!==b[0] && a[1]!==b[1]) issues.push(`線分が水平・垂直でない (${a})-(${b}) [9.1(1)]`);
+        if(a[0]===b[0] && a[1]===b[1]) continue;
+        segs.push({a,b,e,i});
+      }
+      if(e.arrows.some(i=>i!==e.pts.length-1)) issues.push(`線の終端以外に矢印がある (${e.pts[0]})→(${e.pts[e.pts.length-1]})`);
+    }
+    // 交差(端点を共有しない直交線分の交差)
+    for(let i=0;i<segs.length;i++) for(let j=i+1;j<segs.length;j++){
+      const s=segs[i], t=segs[j];
+      const sh=s.a[1]===s.b[1], th=t.a[1]===t.b[1];
+      if(sh===th) continue;
+      const h=sh?s:t, v=sh?t:s;
+      const hx1=Math.min(h.a[0],h.b[0]), hx2=Math.max(h.a[0],h.b[0]), hy=h.a[1];
+      const vy1=Math.min(v.a[1],v.b[1]), vy2=Math.max(v.a[1],v.b[1]), vx=v.a[0];
+      if(vx>hx1 && vx<hx2 && hy>vy1 && hy<vy2) issues.push(`線が交差している x=${vx}, y=${hy} [9.2.1(3)]`);
+    }
+    // 線分と記号の重なり(線が記号の内部を通る)
+    for(const nd of c.nodes){
+      const l=nd.x-nd.w/2, r=nd.x+nd.w/2, t=nd.y, b=nd.y+nd.h;
+      for(const s of segs){
+        const x1=Math.min(s.a[0],s.b[0]), x2=Math.max(s.a[0],s.b[0]), y1=Math.min(s.a[1],s.b[1]), y2=Math.max(s.a[1],s.b[1]);
+        const eps=0.5;
+        if(x2>l+eps && x1<r-eps && y2>t+eps && y1<b-eps){
+          // 内部を通る(端点が記号の接続点にあるだけなら除外)
+          const inside=(p)=>p[0]>l+eps&&p[0]<r-eps&&p[1]>t+eps&&p[1]<b-eps;
+          if(inside(s.a)||inside(s.b)||(x1<l&&x2>r)||(y1<t&&y2>b)) issues.push(`線が記号「${nd.text}」の内部を通る [9.2.1(5)]`);
+        }
+      }
+    }
+    // 接続点: 線の端点が記号の定義済み接続点(上辺中央・下辺中央・ひし形頂点・結合子の左右)か、他の線分上(合流)にあるか
+    const ports=new Set();
+    for(const nd of c.nodes){
+      const add=(x,y)=>ports.add(x+','+y);
+      if(nd.kind==='decision'){ add(nd.x,nd.y); add(nd.x,nd.y+nd.h); add(nd.x-nd.w/2,nd.y+nd.h/2); add(nd.x+nd.w/2,nd.y+nd.h/2); add(nd.x+nd.w/4,nd.y+nd.h/4); }
+      else if(nd.kind==='connector'){ add(nd.x,nd.y); add(nd.x,nd.y+nd.h); add(nd.x-nd.w/2,nd.y+nd.h/2); add(nd.x+nd.w/2,nd.y+nd.h/2); }
+      else { add(nd.x,nd.y); add(nd.x,nd.y+nd.h); add(nd.x+nd.w/2,nd.y+nd.h/2); }
+    }
+    const onSeg=(p, self)=>segs.some(s=>{ if(s.e===self) return false; const x1=Math.min(s.a[0],s.b[0]),x2=Math.max(s.a[0],s.b[0]),y1=Math.min(s.a[1],s.b[1]),y2=Math.max(s.a[1],s.b[1]); return p[0]>=x1&&p[0]<=x2&&p[1]>=y1&&p[1]<=y2; });
+    for(const e of c.edges){
+      if(e.dashed) continue;
+      const p0=e.pts[0], p1=e.pts[e.pts.length-1];
+      for(const p of [p0,p1]){
+        if(!ports.has(p[0]+','+p[1]) && !onSeg(p,e)) issues.push(`線の端点 (${p}) が記号の接続点にも他の線上にもない [9.2.1(5)]`);
+      }
+      // 矢印: 逆向き区間を含む線は、記号に入るなら終端に矢印。合流なら横から入る線に矢印
+      const n=e.pts.length, lastH = n>=2 && e.pts[n-1][1]===e.pts[n-2][1];
+      const atPort=ports.has(p1[0]+','+p1[1]), atJunction=!atPort && onSeg(p1,e);
+      const has=e.arrows.includes(n-1);
+      if(atPort && hasNonStd(e.pts) && !has) issues.push(`逆向きの区間を含む線の終端に矢印がない (${p0})→(${p1}) [9.2.1(2)]`);
+      if(atJunction && lastH && !has) issues.push(`横から合流する線の終端に矢印がない (${p0})→(${p1}) [9.2.1(2)]`);
+      if(!atPort && !atJunction && hasNonStd(e.pts)) issues.push(`逆向きの区間を含む線が記号にも合流点にも達していない (${p0})→(${p1})`);
+    }
+    // 判断の出口ラベル
+    for(const nd of c.nodes){ if(nd.kind==='decision'){
+      const labels=c.edges.filter(e=>e.label && (e.pts[0][0]===nd.x && e.pts[0][1]===nd.y+nd.h || Math.abs(e.pts[0][0]-nd.x)===nd.w/2 && e.pts[0][1]===nd.y+nd.h/2));
+      if(labels.length<2) issues.push(`判断「${nd.text}」の出口に条件ラベルがない [9.3.1(2)]`);
+    }}
+    // 結合子の対
+    const outs=c.nodes.filter(n=>n.kind==='connector'&&n.out).map(n=>n.text), ins=c.nodes.filter(n=>n.kind==='connector'&&n.in).map(n=>n.text);
+    for(const o of outs) if(!ins.includes(o)) issues.push(`出結合子 ${o} に対応する入結合子がない [8.4(1)]`);
+    // 同種記号の寸法
+    for(const nd of c.nodes){ if(['process','predefined','data','terminator'].includes(nd.kind) && (nd.h!==SZ.H || nd.w%(SZ.W/4)!==0)) issues.push(`記号「${nd.text}」の寸法が基準外 [9.1(2)]`); }
+  }
+  return issues;
+}
+
+return {parse, print, layoutProgram, renderSVG, renderPaged, paginate, composePages, PAGE, check, ParseError, SZ, symbolText};
+})();
+
+/* =====================================================================
+   7. UI
+   ===================================================================== */
+const $=s=>document.querySelector(s);
+const srcEl=$('#src'), viewEl=$('#view'), msgEl=$('#msg'), editEl=$('#edit');
+let prog=null, charts=null, selectedId=null, svgEl=null, pageSvgs=null, stale=false;   // stale: テキストが構文エラー中で図が古い
+
+const SAMPLE=`# 1 から n までの和を求め、偶奇を表示する
+n = int(input())
+s = 0
+i = 1
+while i <= n:
+    s = s + i      # 累積
+    i = i + 1
+if s % 2 == 0:
+    print("偶数", s)
+else:
+    print("奇数", s)
+`;
+
+function render(){
+  const text=srcEl.value;
+  highlight(text); syncScroll();
+  msgEl.innerHTML='';
+  try{
+    prog=FLOW.parse(text);
+  }catch(e){
+    if(e instanceof FLOW.ParseError){ msgEl.innerHTML=`<span class="err">${e.line} 行目: ${esc(e.message)}</span>`; }
+    else { msgEl.innerHTML=`<span class="err">${esc(e.message)}</span>`; console.error(e); }
+    stale=true; editEl.classList.remove('on'); viewEl.classList.add('stale');   // 古い図のまま。編集はできない
+    return;
+  }
+  stale=false; viewEl.classList.remove('stale');
+  charts=FLOW.layoutProgram(prog, {});
+  const issues=FLOW.check(charts);
+  const n=charts.reduce((a,c)=>a+c.nodes.length,0);
+  viewEl.querySelectorAll('svg').forEach(s=>s.remove());
+  const pageOpt=$('#optPage').value;
+  if(pageOpt){
+    pageSvgs=FLOW.renderPaged(charts, {lineNo:$('#optLineNo').checked, ref:$('#optRef').value}, FLOW.PAGE[pageOpt]);
+    viewEl.classList.add('paged');
+    for(const p of pageSvgs) viewEl.appendChild(p);
+    svgEl=null;
+  } else {
+    pageSvgs=null; viewEl.classList.remove('paged');
+    svgEl=FLOW.renderSVG(charts, {lineNo:$('#optLineNo').checked});
+    viewEl.appendChild(svgEl);
+  }
+  viewEl.querySelectorAll('.sym').forEach(g=>g.addEventListener('click', ev=>{ ev.stopPropagation(); select(g.getAttribute('data-id')); }));
+  if(selectedId){ const gs=viewEl.querySelectorAll(`[data-id="${selectedId}"]`); if(gs.length) gs.forEach(g=>g.classList.add('selected')); else selectedId=null; }
+  const warn = pageOpt && FLOW.renderPaged.warning? ` <span class="err">${esc(FLOW.renderPaged.warning)}</span>` : '';
+  msgEl.innerHTML = (issues.length? `<span class="err">内部の配置検査で ${issues.length} 件の問題(ツールの不具合です。報告してください): ${esc(issues[0])}</span>` : `<span class="ok">記号 ${n} 個、図 ${charts.length} 枚</span>`) + warn;
+  updateEdit();
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---- Python の色付け(textarea の背後に同じ文字を重ねる) ---- */
+const hlEl=$('#hl');
+const PY_KW=/\b(def|return|if|elif|else|while|for|in|break|continue|pass|and|or|not|is|True|False|None|import|from|class|try|except|finally|with|as|lambda|global|nonlocal|yield|raise|assert|del|async|await)\b/;
+const PY_BI=/\b(print|input|int|float|str|len|range|map|abs|min|max|sum|list|round|sorted|append)\b/;
+function highlight(text){
+  const re=/(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)(?=\s*\()|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out='', last=0, m;
+  while((m=re.exec(text))){
+    out+=esc(text.slice(last,m.index)); last=re.lastIndex;
+    const t=m[0];
+    if(m[1]) out+=`<span class="cm">${esc(t)}</span>`;
+    else if(m[2]) out+=`<span class="st">${esc(t)}</span>`;
+    else if(m[3]) out+=`<span class="nu">${t}</span>`;
+    else if(m[4]) out+= PY_KW.test(t)? `<span class="kw">${t}</span>` : PY_BI.test(t)? `<span class="bi">${t}</span>` : `<span class="fn">${t}</span>`;
+    else out+= PY_KW.test(t)? `<span class="kw">${t}</span>` : t;
+  }
+  out+=esc(text.slice(last));
+  hlEl.innerHTML=out+'\n';
+}
+function syncScroll(){ hlEl.scrollTop=srcEl.scrollTop; hlEl.scrollLeft=srcEl.scrollLeft; }
+srcEl.addEventListener('scroll', syncScroll);
+let timer=null;
+srcEl.addEventListener('input', ()=>{ highlight(srcEl.value); clearTimeout(timer); timer=setTimeout(render, 150); });
+function insertText(t){   // 可能なら Undo 履歴を保つ方法で挿入する
+  srcEl.focus();
+  let ok=false; try{ ok=document.execCommand('insertText', false, t); }catch(e){}
+  if(!ok){ const s=srcEl.selectionStart, e=srcEl.selectionEnd; srcEl.value=srcEl.value.slice(0,s)+t+srcEl.value.slice(e); srcEl.selectionStart=srcEl.selectionEnd=s+t.length; }
+  highlight(srcEl.value); clearTimeout(timer); timer=setTimeout(render, 150);
+}
+srcEl.addEventListener('keydown', e=>{
+  if(e.isComposing || e.keyCode===229) return;           // 日本語入力の変換中・確定の Enter には反応しない
+  if(e.key==='Tab' && !e.shiftKey){ e.preventDefault(); insertText('    '); }
+  if(e.key==='Enter'){ // 自動字下げ
+    const s=srcEl.selectionStart; const before=srcEl.value.slice(0,s); const line=before.slice(before.lastIndexOf('\n')+1);
+    let ind=/^\s*/.exec(line)[0]; if(/:\s*$/.test(line)) ind+='    ';
+    e.preventDefault(); insertText('\n'+ind);
+  }
+});
+$('#optLineNo').addEventListener('change', render);
+$('#optPage').addEventListener('change', ()=>{ $('#lblRef').style.display=$('#optPage').value?'':'none'; render(); });
+$('#optRef').addEventListener('change', render);
+viewEl.addEventListener('click', ()=>select(null));
+
+/* ---- 構造化編集 ---- */
+function findNode(id){
+  let found=null, parent=null, index=-1, slot=null;
+  (function walk(b, p, sl){ b.forEach((n,i)=>{ if(found) return; if(n.id===id){ found=n; parent=p; index=i; slot=sl; return; }
+    if(n.then) walk(n.then, n, 'then'); if(n.else) walk(n.else, n, 'else'); if(n.body) walk(n.body, n, 'body'); }); })(prog.main, null, 'main');
+  if(!found) prog.funcs.forEach(f=>{ if(found) return; if(f.id===id){found=f;parent=null;index=prog.funcs.indexOf(f);slot='funcs';return;} (function walk(b,p,sl){ b.forEach((n,i)=>{ if(found) return; if(n.id===id){found=n;parent=p;index=i;slot=sl;return;} if(n.then) walk(n.then,n,'then'); if(n.else) walk(n.else,n,'else'); if(n.body) walk(n.body,n,'body'); }); })(f.body, f, 'body'); });
+  return found? {node:found, parent, index, slot} : null;
+}
+function blockOf(parent, slot){ if(parent===null) return slot==='funcs'? prog.funcs : prog.main; return parent[slot]; }
+function select(id){
+  if(stale) return;
+  selectedId=id;
+  viewEl.querySelectorAll('.sym.selected').forEach(g=>g.classList.remove('selected')); if(id) viewEl.querySelectorAll(`[data-id="${id}"]`).forEach(g=>g.classList.add('selected'));
+  updateEdit();
+}
+function commit(){ if(stale) return; const path=selectedId? pathOf(selectedId) : null; srcEl.value=FLOW.print(prog); selectedId=null; render(); if(path) reselectByPath(path); }
+// 編集後は AST を作り直すので id が変わる。選択は木の中の位置(経路)で引き継ぐ
+function pathOf(id){
+  const base=id.replace(/_(pre|first|incr|cin|bin|p)$/,'');
+  let path=null;
+  (function walk(b, pre){ b.forEach((n,i)=>{ if(path) return; if(n.id===base){ path=[...pre, i]; return; }
+    if(n.then) walk(n.then,[...pre,i,'then']); if(n.else) walk(n.else,[...pre,i,'else']); if(n.body) walk(n.body,[...pre,i,'body']); }); })(prog.main, ['main']);
+  if(!path) prog.funcs.forEach((f,fi)=>{ if(path) return; if(f.id===base){ path=['funcs',fi]; return; } (function walk(b, pre){ b.forEach((n,i)=>{ if(path) return; if(n.id===base){ path=[...pre,i]; return; } if(n.then) walk(n.then,[...pre,i,'then']); if(n.else) walk(n.else,[...pre,i,'else']); if(n.body) walk(n.body,[...pre,i,'body']); }); })(f.body, ['funcs',fi,'body']); });
+  return path? {path, kind:findNode(base)?.node.kind} : null;
+}
+function reselectByPath(p){
+  if(!prog) return;
+  let cur = p.path[0]==='main'? prog.main : prog.funcs;
+  let node=null;
+  for(let k=1;k<p.path.length;k++){
+    const step=p.path[k];
+    if(typeof step==='number'){ node=cur[step]; if(!node) return; }
+    else { cur=node[step]; if(!cur) return; }
+  }
+  if(node && node.kind===p.kind) select(node.id);
+}
+function stmtLabel(n){ return {pass:'pass(記号なし)',process:'処理',call:'定義済み処理',input:'入力',output:'出力',return:'返す',break:'break',continue:'continue',if:'判断(if)',while:'判断(while)',for:'判断(for range)',forin:'判断(for in)',def:'関数'}[n.kind]; }
+
+function updateEdit(){
+  editEl.innerHTML=''; editEl.classList.remove('on');
+  if(!selectedId||!prog) return;
+  const add=(html)=>{ const d=document.createElement('div'); d.className='grp'; d.innerHTML=html; editEl.appendChild(d); return d; };
+  if(selectedId==='start_main'){
+    editEl.classList.add('on');
+    add('<span class="kind">開始</span><span class="small">メインのフローチャートの先頭に記号を入れられます</span>');
+    const ctl=add('');
+    const sel=document.createElement('select');
+    sel.innerHTML='<option value="">先頭に挿入する記号…</option>'+[['process','処理'],['input','入力'],['output','出力'],['if','if'],['ifelse','if / else'],['while','while'],['for','for range'],['forin','for in']].map(k=>`<option value="${k[0]}">${k[1]}</option>`).join('');
+    sel.addEventListener('change', ()=>{ if(sel.value){ prog.main.unshift(newStmt(sel.value)); selectedId=null; commit(); } });
+    ctl.appendChild(sel);
+    const bf=document.createElement('button'); bf.textContent='関数を追加'; bf.addEventListener('click', ()=>{ let k=1; while(prog.funcs.some(f=>f.name==='f'+k)) k++; prog.funcs.push({id:'newf'+(++newSeq), line:0, comment:null, above:[], inline:null, kind:'def', name:'f'+k, params:'x', body:[{...newStmt('return')}]}); selectedId=null; commit(); }); ctl.appendChild(bf);
+    const bc=document.createElement('button'); bc.textContent='閉じる'; bc.addEventListener('click', ()=>select(null)); ctl.appendChild(bc);
+    return;
+  }
+  const baseId=selectedId.replace(/_(pre|first|incr|cin|bin|p)$/,'');
+  const f=findNode(baseId);
+  if(!f) return;
+  const n=f.node;
+  editEl.classList.add('on');
+  add(`<span class="kind">${stmtLabel(n)}</span><span class="small">${n.line} 行目</span>`);
+  // 文字編集
+  const fields=[];
+  const tf=(label, key, val)=>{ const d=add(`<label>${label} <input type="text" data-k="${key}" value="${esc(val??'')}"></label>`); fields.push(d.querySelector('input')); };
+  switch(n.kind){
+    case 'process': case 'call': tf('文','text',n.text); break;
+    case 'input': { const d=add(`<label>型 <select data-k="type"><option value="int">整数</option><option value="float">浮動小数点数</option><option value="str">文字列</option></select></label>`); d.querySelector('select').value=n.type; fields.push(d.querySelector('select')); tf('変数(, 区切り)','vars',n.vars.join(', ')); break; }
+    case 'output': tf('出力する値','args',n.args); break;
+    case 'return': tf('返す値(空なら値なし)','expr',n.expr); break;
+    case 'if': case 'while': tf('条件','cond',n.cond); break;
+    case 'for': tf('変数','var',n.var); tf('初期値','start',n.start); tf('終値','stop',n.stop); tf('増分','step',n.step); break;
+    case 'forin': tf('変数','var',n.var); tf('並び','iter',n.iter); break;
+    case 'def': tf('関数名','name',n.name); tf('引数','params',n.params); break;
+  }
+  tf('注釈(コメント)','comment',n.comment);
+  for(const inp of fields){ inp.addEventListener('change', ()=>{ applyEdit(n, inp.dataset.k, inp.value); }); inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } }); }
+  // 挿入・削除
+  const ctl=add('');
+  const inDef = isInDef(baseId);
+  const isLoopNode=['while','for','forin'].includes(n.kind);
+  const inLoop = isInLoop(baseId) || isLoopNode;
+  const mk=(label, fn)=>{ const b=document.createElement('button'); b.textContent=label; b.addEventListener('click', fn); ctl.appendChild(b); return b; };
+  const insertSel=document.createElement('select');
+  const kinds=[['process','処理'],['input','入力'],['output','出力'],['if','if'],['ifelse','if / else'],['while','while'],['for','for range'],['forin','for in']];
+  if(inDef) kinds.push(['return','return']);
+  if(inLoop) kinds.push(['break','break'],['continue','continue']);
+  insertSel.innerHTML='<option value="">挿入する記号…</option>'+kinds.map(k=>`<option value="${k[0]}">${k[1]}</option>`).join('');
+  const where=document.createElement('select');
+  const whereOpts=n.kind==='def'? [] : [['after','この記号の後に']];
+  if(n.kind==='if'){ whereOpts.push(['then','Yes 側の先頭に']); if(n.else && !(n.else.length===1&&n.else[0].elif)) whereOpts.push(['else','No 側の先頭に']); }
+  if(n.body) whereOpts.push(['body','本体の先頭に']);
+  where.innerHTML=whereOpts.map(w=>`<option value="${w[0]}">${w[1]}</option>`).join('');
+  ctl.appendChild(where);
+  ctl.appendChild(insertSel);
+  insertSel.addEventListener('change', ()=>{
+    if(!insertSel.value) return;
+    if(['break','continue'].includes(insertSel.value) && !isInLoop(baseId) && where.value!=='body'){ alert(insertSel.value+' はループの中にだけ入れられます'); insertSel.value=''; return; }
+    insertStmt(f, where.value, insertSel.value);
+  });
+  if(n.kind==='if'){ if(!n.else) mk('else を追加', ()=>{ n.else=[newStmt('process')]; commit(); }); else if(!(n.else.length===1&&n.else[0].elif)) mk('else を削除', ()=>{ n.else=null; commit(); }); }
+  mk('この記号を削除', ()=>{
+    if(n.kind==='if' && n.elif && f.slot==='else'){ f.parent.else=n.else; }     // elif を消すと後ろの elif/else がつながる
+    else { const b=blockOf(f.parent,f.slot); b.splice(f.index,1); if(b.length===0 && f.parent){ if(f.slot==='else') f.parent.else=null; else b.push(newStmt('pass')); } }
+    selectedId=null; commit(); });
+  mk('閉じる', ()=>select(null));
+}
+function isInDef(id){ return prog.funcs.some(f=> f.id===id || contains(f.body,id)); }
+function isInLoop(id){ let r=false; (function walk(b,inLoop){ for(const n of b){ if(n.id===id){ if(inLoop) r=true; } const l=inLoop||['while','for','forin'].includes(n.kind); if(n.then) walk(n.then,inLoop); if(n.else) walk(n.else,inLoop); if(n.body) walk(n.body,l); } })(prog.main.concat(prog.funcs), false); return r; }
+function contains(b,id){ for(const n of b){ if(n.id===id) return true; if(n.then&&contains(n.then,id)) return true; if(n.else&&contains(n.else,id)) return true; if(n.body&&contains(n.body,id)) return true; } return false; }
+let newSeq=0;
+function newStmt(kind){
+  const base={id:'new'+(++newSeq), line:0, comment:null, above:[], inline:null};
+  switch(kind){
+    case 'process': return {...base, kind:'process', text:'x = 0'};
+    case 'input': return {...base, kind:'input', vars:['x'], type:'int', prompt:null};
+    case 'output': return {...base, kind:'output', args:'x'};
+    case 'if': return {...base, kind:'if', cond:'x > 0', then:[newStmt('process')], else:null, elif:false};
+    case 'ifelse': return {...base, kind:'if', cond:'x > 0', then:[newStmt('process')], else:[newStmt('process')], elif:false};
+    case 'while': return {...base, kind:'while', cond:'x < 10', body:[newStmt('process')]};
+    case 'for': return {...base, kind:'for', var:'i', start:'0', stop:'10', step:'1', body:[newStmt('process')]};
+    case 'forin': return {...base, kind:'forin', var:'x', iter:'L', body:[newStmt('process')], counter:null};
+    case 'return': return {...base, kind:'return', expr:'x'};
+    case 'break': return {...base, kind:'break'};
+    case 'pass': return {...base, kind:'pass'};
+    case 'continue': return {...base, kind:'continue'};
+  }
+}
+function insertStmt(f, where, kind){
+  const s=newStmt(kind);
+  if(where==='after'){ const b=blockOf(f.parent,f.slot); b.splice(f.index+1,0,s); }
+  else { const b=f.node[where]; b.unshift(s); }
+  selectedId=null; commit();
+}
+function applyEdit(n, key, val){
+  val=val.trim();
+  if(key==='vars'){ const vs=val.split(',').map(v=>v.trim()).filter(v=>v); if(!vs.length || vs.some(v=>!/^[A-Za-z_][A-Za-z0-9_]*$/.test(v))){ alert('変数名は英字で始まる英数字と _ で、1 つ以上必要です'); updateEdit(); return; } n.vars=vs; }
+  else if(key==='comment'){ n.comment=val||null; n.inline=val||null; n.above=[]; }
+  else if(key==='expr') n.expr=val||null;
+  else { n[key]=val; if(n.kind==='for') n.rangeText=null; }
+  commit();
+}
+
+/* ---- 保存・読込 ---- */
+function download(name, blob){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+function docJSON(){ return {app:'フローチャート', url:'https://flow.sapp.jp', version:1, source:srcEl.value, options:{lineNo:$('#optLineNo').checked, page:$('#optPage').value, ref:$('#optRef').value}}; }
+function baseName(){ return 'flowchart'; }
+function currentSVG(){ return svgEl || (pageSvgs? FLOW.composePages(pageSvgs) : null); }
+function svgText(){
+  const cur=currentSVG();
+  if(!cur) return null;
+  const clone=cur.cloneNode(true);
+  clone.querySelectorAll('.selected').forEach(g=>g.classList.remove('selected'));
+  clone.querySelectorAll('.screen-only').forEach(e=>e.remove());
+  const meta=document.createElementNS('http://www.w3.org/2000/svg','metadata'); meta.setAttribute('id','flow-source');
+  meta.textContent=JSON.stringify(docJSON());
+  clone.insertBefore(meta, clone.firstChild);
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<!-- フローチャート (https://flow.sapp.jp) で作成。metadata に元の Python を含み、このファイルをフローチャートで開くと編集を続けられます -->\n'+new XMLSerializer().serializeToString(clone);
+}
+$('#saveAs').addEventListener('change', async ()=>{
+  const v=$('#saveAs').value; $('#saveAs').value='';
+  if(!v) return;
+  if(v==='print'){ window.print(); return; }
+  if(v==='py'){ download(baseName()+'.py', new Blob([srcEl.value],{type:'text/x-python'})); return; }
+  if(v==='json'){ download(baseName()+'.json', new Blob([JSON.stringify(docJSON(),null,2)],{type:'application/json'})); return; }
+  const cur=currentSVG();
+  if(!cur){ alert('図がありません(エラーを直してください)'); return; }
+  if(v==='svg'){ download(baseName()+'.svg', new Blob([svgText()],{type:'image/svg+xml'})); return; }
+  if(v==='png'){
+    const scale=3;
+    const w=cur.width.baseVal.value, h=cur.height.baseVal.value;
+    const img=new Image();
+    const url=URL.createObjectURL(new Blob([svgText()],{type:'image/svg+xml'}));
+    img.onload=()=>{ const c=document.createElement('canvas'); c.width=w*scale; c.height=h*scale; const g=c.getContext('2d'); g.scale(scale,scale); g.drawImage(img,0,0); URL.revokeObjectURL(url); c.toBlob(b=>download(baseName()+'.png', b),'image/png'); };
+    img.onerror=()=>alert('PNG の作成に失敗しました');
+    img.src=url;
+  }
+});
+function openFile(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    const t=r.result;
+    try{
+      if(/\.json$/i.test(file.name)){ const j=JSON.parse(t); if(typeof j.source!=='string') throw 0; srcEl.value=j.source; if(j.options){ $('#optLineNo').checked=!!j.options.lineNo; $('#optPage').value=j.options.page||''; $('#optRef').value=j.options.ref||''; $('#lblRef').style.display=$('#optPage').value?'':'none'; } }
+      else if(/\.svg$/i.test(file.name)){ const m=/<metadata[^>]*id="flow-source"[^>]*>([\s\S]*?)<\/metadata>/.exec(t); if(!m) throw 0; const j=JSON.parse(m[1].replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')); srcEl.value=j.source; }
+      else srcEl.value=t;
+      selectedId=null; render();
+    }catch(e){ alert(/\.png$/i.test(file.name)? 'PNG は開けません(図の画像だけで、元の Python を含みません)。JSON、SVG、.py のいずれかを開いてください。' : 'このファイルはフローチャートで開けません: '+file.name); }
+  };
+  r.readAsText(file);
+}
+$('#fileOpen').addEventListener('change', e=>{ if(e.target.files[0]) openFile(e.target.files[0]); e.target.value=''; });
+['dragenter','dragover'].forEach(ev=>window.addEventListener(ev, e=>{ e.preventDefault(); $('#drop').classList.add('on'); }));
+['dragleave','drop'].forEach(ev=>window.addEventListener(ev, e=>{ e.preventDefault(); if(ev==='drop'||e.relatedTarget===null) $('#drop').classList.remove('on'); }));
+window.addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f) openFile(f); });
+$('#btnNew').addEventListener('click', ()=>{ if(srcEl.value.trim()==='' || confirm('書いている内容を消して新規作成しますか?')){ srcEl.value=''; selectedId=null; render(); } });
+$('#btnSample').addEventListener('click', ()=>{ if(srcEl.value.trim()==='' || confirm('書いている内容を例で置き換えますか?')){ srcEl.value=SAMPLE; selectedId=null; render(); } });
+/* ---- 分割バーの移動 ---- */
+(()=>{ const sp=$('#splitter'), left=$('#left'); let drag=false; sp.addEventListener('mousedown',()=>{drag=true;document.body.style.userSelect='none';}); window.addEventListener('mouseup',()=>{drag=false;document.body.style.userSelect='';}); window.addEventListener('mousemove',e=>{ if(drag) left.style.width=Math.max(200,e.clientX)+'px'; }); })();
+
+/* ---- ダイアログは枠外クリックで閉じる ---- */
+document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click', e=>{ const r=d.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) d.close(); }));
+/* ---- 書き方の説明 ---- */
+$('#btnHelp').addEventListener('click', ()=>{
+  const d=$('#dlgHelp');
+  d.innerHTML=`<h2>書き方(Python サブセット)</h2>
+<p>Python の次の構文だけを受け付けます。1 文は 1 行、字下げは空白 4 個(ブロックごとに揃っていれば他の幅でも可)。これ以外の構文(クラス、例外処理、with、import、lambda、match 文、関数の入れ子、while / for の else、1 行に書く if など)は「フローチャートにできない」としてエラーになります。</p>
+<table>
+<tr><th>Python</th><th>記号(JIS X 0121)</th><th>記号の中の文字</th></tr>
+<tr><td><code>x = 式</code>、式文</td><td>処理 [8.2.1(1)]</td><td>原文のまま</td></tr>
+<tr><td><code>x = int(input())</code> / <code>float(...)</code> / <code>x = input()</code></td><td>データ [8.1.1(1)]</td><td>整数 x を入力 / 浮動小数点数 x を入力 / 文字列 x を入力</td></tr>
+<tr><td><code>a, b = map(int, input().split())</code>(float も可) / <code>a, b = input().split()</code></td><td>データ</td><td>整数 a, b を入力 / 文字列 a, b を入力</td></tr>
+<tr><td><code>print(a, b)</code></td><td>データ</td><td>a, b を出力</td></tr>
+<tr><td><code>if 条件:</code> / <code>elif</code> / <code>else:</code></td><td>判断 [8.2.2(4)]。Yes は下、No は右</td><td>条件(原文)</td></tr>
+<tr><td><code>while 条件:</code></td><td>判断 + 戻り線</td><td>条件</td></tr>
+<tr><td><code>for i in range(a, b, c):</code>(c は整数リテラル)</td><td>処理 i = a → 判断 i &lt; b → 本体 → 処理 i = i + c → 戻り線</td><td></td></tr>
+<tr><td><code>for x in L:</code></td><td>添字 i を補って展開(i = 0 → i &lt; len(L) → x = L[i] → 本体 → i = i + 1)</td><td></td></tr>
+<tr><td><code>break</code> / <code>continue</code></td><td>「if 条件: break」が浅い形(if がループ本体に直接ある / continue は Yes 側だけを通る)なら、その判断だけ Yes を右 / 左に出して直線で描く。それ以外は出結合子 B1 / C1 と、ループの出口 / 条件の手前の入結合子 [8.4(1)、9.2.2(1)]</td><td></td></tr>
+<tr><td><code>def f(x):</code></td><td>別のフローチャート。開始の端子に「f(x)」、終了の端子に「f 終了」[8.4(2)]</td><td></td></tr>
+<tr><td><code>f(x)</code>(同じファイルで def した関数)</td><td>定義済み処理 [8.2.2(1)]</td><td>原文のまま</td></tr>
+<tr><td><code>return x</code> / <code>return</code></td><td>端子</td><td>x を返す / f 終了</td></tr>
+<tr><td><code># コメント</code></td><td>注釈 [8.4(3)]</td><td>コメント文</td></tr>
+</table>
+<p>生成 AI に書かせるときの指示文の例:</p>
+<pre>次の処理を Python で書いてください。使える構文は、代入と式文、print()、
+x = int(input()) / x = float(input()) / x = input() / a, b = map(int, input().split()) の形の入力、
+if/elif/else、while、for i in range(...)、for x in リスト、break、continue、def(入れ子なし)、return、# コメント だけです。
+クラス、例外処理、内包表記、import、with、lambda は使わないでください。1 文は 1 行、字下げは空白 4 個です。
+これはフローチャート作図ツール「フローチャート」(https://flow.sapp.jp)への入力です。</pre>
+<p>詳しい指示文は <code>docs/prompt_for_ai.md</code> にあります。最初にその中身を AI に渡してください。</p>
+<form method="dialog"><button>閉じる</button></form>`;
+  d.showModal();
+});
+
+render();
+</script>
+</body>
+</html>

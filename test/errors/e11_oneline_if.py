@@ -1,0 +1,2 @@
+x = 1
+if x > 0: y = 1   # expect: 2
