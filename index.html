@@ -85,6 +85,13 @@ footer a{color:#777}
 .fname{font-size:13px;color:#444;max-width:16em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stat{font-size:12px;color:#2a6b2a}
 @media print{ @page{margin:0} header,#left,#splitter,#edit,footer{display:none !important} body,main,#right,#view{display:block;overflow:visible;height:auto} }
+/* 図を 1 枚だけ、図と同じ大きさの紙(余白 0)で印刷する(書き出し → PDF)。紙の指定は #pageOne に入れる */
+#printArea{display:none}
+@media print{
+  body.printOne>*:not(#printArea){display:none!important}
+  body.printOne #printArea{display:block}
+  body.printOne #printArea svg{display:block}
+}
 </style>
 </head>
 <body>
@@ -98,8 +105,9 @@ footer a{color:#777}
     <option value="">書き出し…</option>
     <option value="svg" title="Python と設定を埋め込むので、このアプリで開き直せる">SVG</option>
     <option value="png">PNG</option>
+    <option value="pdf" title="図を 1 枚、図と同じ大きさの紙(余白なし)で印刷する。印刷の画面で「PDF に保存」を選ぶと、TeX にそのまま貼れる PDF になる">PDF(図の大きさ)</option>
     <option value="json" title="Python と設定をまとめたもの">JSON</option>
-    <option value="print">印刷 / PDF</option>
+    <option value="print" title="ページ分割していれば A4 に 1 ページずつ">印刷 / PDF(用紙)</option>
   </select>
   <span id="fileName" class="fname"></span>
   <span id="stat" class="stat" role="status"></span>
@@ -123,6 +131,7 @@ footer a{color:#777}
 </main>
 <footer>フローチャート — JIS X 0121:1986 に沿ったプログラムフローチャート。単一 HTML、データはどこにも送信されません。MIT License, Copyright (c) 2026 Kouta Sekine. <a href="https://sapp.jp" target="_blank" rel="noopener">S Apps</a></footer>
 
+<div id="printArea"></div>
 <dialog id="dlgHelp"></dialog>
 
 <script>
@@ -1335,7 +1344,7 @@ srcEl.addEventListener('keydown', e=>{
   }
 });
 $('#optLineNo').addEventListener('change', render);
-$('#optPage').addEventListener('change', ()=>{ $('#lblRef').style.display=$('#optPage').value?'':'none'; render(); });
+$('#optPage').addEventListener('change', ()=>{ $('#lblRef').style.display=$('#optPage').value?'':'none'; setPaper(); render(); });
 $('#optRef').addEventListener('change', render);
 viewEl.addEventListener('click', ()=>select(null));
 
@@ -1494,13 +1503,45 @@ function svgText(){
   const meta=document.createElementNS('http://www.w3.org/2000/svg','metadata'); meta.setAttribute('id','flow-source');
   meta.textContent=JSON.stringify(docJSON());
   clone.insertBefore(meta, clone.firstChild);
+  const w=clone.getAttribute('width'), h=clone.getAttribute('height');
+  const ps=document.createElementNS('http://www.w3.org/2000/svg','style'); ps.textContent=`@page{size:${w}px ${h}px;margin:0}`;
+  clone.insertBefore(ps, meta.nextSibling);
   return '<?xml version="1.0" encoding="UTF-8"?>\n<!-- フローチャート (https://flow.sapp.jp) で作成。metadata に元の Python を含み、このファイルをフローチャートで開くと編集を続けられます -->\n'+new XMLSerializer().serializeToString(clone);
 }
+// 図を 1 枚だけ、図と同じ大きさの紙・余白 0 で印刷する(ブラウザの「PDF に保存」で、余白のない PDF になる。アプリの中で PDF は作らない)。
+// ページ分割の設定によらず、分割しない 1 枚の図を使う
+// 「印刷 / PDF(用紙)」の紙: ページ分割の設定に合わせて A4 縦・横を指定する(分割なしのときは印刷の画面で選ぶ)
+function setPaper(){
+  let st=$('#pagePaper');
+  if(!st){ st=document.createElement('style'); st.id='pagePaper'; document.head.append(st); }
+  const v=$('#optPage').value;
+  st.textContent= v==='A4P'? '@media print{@page{size:A4 portrait;margin:0}}' : v==='A4L'? '@media print{@page{size:A4 landscape;margin:0}}' : '';
+}
+// 「PDF(図の大きさ)」の状態を外す(印刷の後と、通常の印刷の前)
+function clearPrintOne(){ document.body.classList.remove('printOne'); $('#printArea').textContent=''; const st=$('#pageOne'); if(st) st.textContent=''; }
+function noFigure(){ if(!charts || stale){ alert('図がありません(エラーを直してください)'); return true; } return false; }
+function printOne(){
+  if(noFigure()) return;
+  const svg=FLOW.renderSVG(charts, {lineNo:$('#optLineNo').checked});
+  svg.querySelectorAll('.screen-only').forEach(e=>e.remove());
+  const w=svg.getAttribute('width'), h=svg.getAttribute('height');
+  const area=$('#printArea'); area.textContent=''; area.appendChild(svg);
+  let st=$('#pageOne');
+  if(!st){ st=document.createElement('style'); st.id='pageOne'; document.head.append(st); }
+  st.textContent=`@media print{@page{size:${w}px ${h}px;margin:0}}`;
+  document.body.classList.add('printOne');
+  const title=document.title; document.title=baseName();   // 「PDF に保存」のファイル名の候補になる
+  // print() は印刷の画面を閉じるまで戻らないので、戻ったらすぐ片付ける(afterprint が来ない場合にも、後の印刷に持ち越さない)
+  try{ window.print(); } finally { document.title=title; clearPrintOne(); }
+}
+window.addEventListener('afterprint', clearPrintOne);
 $('#exportAs').addEventListener('change', async ()=>{
   const v=$('#exportAs').value; $('#exportAs').value='';
   if(!v) return;
-  if(v==='print'){ window.print(); return; }
   if(v==='json'){ download(baseName()+'.json', new Blob([JSON.stringify(docJSON(),null,2)],{type:'application/json'})); return; }
+  if(noFigure()) return;    // 構文エラー中は古い図を書き出さない
+  if(v==='print'){ clearPrintOne(); setPaper(); window.print(); return; }
+  if(v==='pdf'){ printOne(); return; }
   const cur=currentSVG();
   if(!cur){ alert('図がありません(エラーを直してください)'); return; }
   if(v==='svg'){ download(baseName()+'.svg', new Blob([svgText()],{type:'image/svg+xml'})); return; }
@@ -1534,12 +1575,19 @@ function saveDoc(){
   STORE_WARN.save= ok? '' : 'ブラウザへの自動保存に失敗しました(容量超過や、保存を許可しない設定など)。残したい内容は「上書き保存」か「別名で保存」でファイルに保存してください';
   return ok;
 }
+// ページを閉じる・隠すときにも保存する(入力から描き直しまでの間に閉じても、最後の入力を失わない)
+window.addEventListener('pagehide', ()=>saveDoc());
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') saveDoc(); });
 function loadDoc(){
   try{ const d=JSON.parse(localStorage.getItem(KEY_DOC)||'null'); return d && typeof d.source==='string' ? d : null; }catch(e){ return null; }
 }
 // 別のタブでこのフローチャートが編集されたら知らせる(後から保存した方が残るため)
+function clearTabWarn(){ STORE_WARN.tab=''; const w=msgEl.querySelector('[data-tabwarn]'); if(w) w.remove(); }
 window.addEventListener('storage', e=>{
   if(e.key===KEY_DOC && e.newValue!==null){
+    // 内容(テキスト)が変わったときだけ知らせる(別のタブで保存しただけ・設定を替えただけなら知らせない)
+    let a=null, b=null; try{ a=JSON.parse(e.oldValue||'null'); b=JSON.parse(e.newValue); }catch(err){}
+    if(a && b && a.source===b.source) return;
     STORE_WARN.tab='別のタブでこのフローチャートが編集されました。このタブで続けると、そちらの内容は上書きされます';
     if(!msgEl.querySelector('[data-tabwarn]')) msgEl.insertAdjacentHTML('afterbegin', `<div class="warn" data-tabwarn>${esc(STORE_WARN.tab)}</div>`);
   }
@@ -1556,6 +1604,7 @@ function setSource(text){
 function setDoc(text, o){
   editGen++;
   fileName=o.name||''; fileHandle=o.handle||null; if(o.base) fileBase=o.base;
+  clearTabWarn();
   setSource(text);
   savedText=srcEl.value;
   showName(); saveDoc();
@@ -1564,6 +1613,7 @@ function applyOptions(o){ if(!o) return; $('#optLineNo').checked=!!o.lineNo; $('
 function openFile(file, handle, handleP){
   if(/\.png$/i.test(file.name)){ alert('PNG は開けません(図の画像だけで、元の Python を含みません)。.py、JSON、SVG のいずれかを開いてください。'); return; }
   if(!/\.(py|txt|json|svg)$/i.test(file.name)){ alert('開けるのは .py(.txt)、.json、フローチャートで書き出した .svg です: '+file.name); return; }
+  if(!okToDiscard()) return;   // 開けるファイルと分かってから、保存していない変更の破棄を確かめる
   const isPy=/\.(py|txt)$/i.test(file.name);
   const r=new FileReader();
   r.onload=()=>{
@@ -1596,7 +1646,7 @@ function downloadText(name){ download(name, new Blob([srcEl.value],{type:'text/x
 async function writeTo(h, text){ const w=await h.createWritable(); await w.write(text); await w.close(); }
 function setSaving(v){ saving=v; $('#btnSave').disabled=v; $('#btnSaveAs').disabled=v; }
 // 書き込んだ内容を「保存済み」とする(書き込み中に編集されていれば、その分は未保存のまま)
-function savedAs(text, msg){ savedText=text; showName(); saveDoc(); setStat(srcEl.value===text? msg : msg+'。保存中に変わった内容はまだ保存されていません'); }
+function savedAs(text, msg){ savedText=text; clearTabWarn(); showName(); saveDoc(); setStat(srcEl.value===text? msg : msg+'。保存中に変わった内容はまだ保存されていません'); }
 async function saveAsFile(){
   if(saving) return;
   if(FS_OK){
@@ -1622,6 +1672,7 @@ async function saveAsFile(){
   const text=srcEl.value;
   downloadText(name);
   fileName=name; fileBase=baseOf(name);
+  fileHandle=null;   // 前に開いていたファイルには、もう上書きしない(次の上書き保存では保存先を尋ねる)
   savedAs(text, name+' をダウンロードしました');
 }
 async function saveFile(){
@@ -1640,12 +1691,13 @@ async function saveFile(){
   downloadText(fileName);
   savedAs(text, fileName+' をダウンロードしました');
 }
-$('#btnSave').addEventListener('click', saveFile);
-$('#btnSaveAs').addEventListener('click', saveAsFile);
+// 記号の編集欄で書き換えている途中なら、先にテキストへ反映してから保存する(編集欄は確定(change)で反映する)
+function flushEdit(){ const a=document.activeElement; if(a && editEl.contains(a) && typeof a.blur==='function') a.blur(); }
+$('#btnSave').addEventListener('click', ()=>{ flushEdit(); saveFile(); });
+$('#btnSaveAs').addEventListener('click', ()=>{ flushEdit(); saveAsFile(); });
 // Ctrl+S(Mac では ⌘S)で上書き保存
-window.addEventListener('keydown', e=>{ if((e.ctrlKey||e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase()==='s'){ e.preventDefault(); saveFile(); } });
+window.addEventListener('keydown', e=>{ if((e.ctrlKey||e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase()==='s'){ e.preventDefault(); flushEdit(); saveFile(); } });
 $('#btnOpen').addEventListener('click', async ()=>{
-  if(!okToDiscard()) return;
   if(!FS_OK){ $('#fileOpen').click(); return; }
   try{ const [h]=await window.showOpenFilePicker(PICK_OPEN); openFile(await h.getFile(), h); }
   catch(e){ if(!e || e.name!=='AbortError') $('#fileOpen').click(); }
@@ -1661,7 +1713,6 @@ window.addEventListener('drop', e=>{
   // 上書きの先にするため、ファイルの扱いを受け取る(Chrome・Edge。ドロップの処理の中で呼ぶ必要がある)
   const it=e.dataTransfer.items && e.dataTransfer.items[0];
   const hp= it && typeof it.getAsFileSystemHandle==='function' ? it.getAsFileSystemHandle() : null;
-  if(!okToDiscard()) return;
   openFile(f, null, hp);
 });
 $('#btnNew').addEventListener('click', ()=>{ if(okToDiscard()) setDoc('', {base:'flowchart'}); });
@@ -1714,6 +1765,7 @@ if/elif/else、while、for i in range(...)、for x in リスト、break、contin
     savedText= f ? (f.dirty? null : d.source) : (d.source.trim()===''? '' : null);
   }
   showName(); }
+setPaper();
 render();
 </script>
 </body>

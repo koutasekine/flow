@@ -47,6 +47,37 @@ const nameText = async (page) => (await page.textContent('#fileName')).trim();
     await d2.saveAs(p);
     expect(d2.suggestedFilename() === 'myflow.' + kind && fs.statSync(p).size > 100, `書き出し ${kind}: ${d2.suggestedFilename()} ${fs.statSync(p).size} bytes`);
   }
+  // 書き出し → PDF(図の大きさ): 紙の大きさが図と同じ・余白 0 で、図 1 枚だけを印刷する(印刷の瞬間の状態を記録する)
+  await page.evaluate(() => { window.__prints = []; window.print = () => { const s = document.querySelector('#printArea svg'); window.__prints.push({ one: document.body.classList.contains('printOne'), w: s && s.getAttribute('width'), h: s && s.getAttribute('height'), css: (document.querySelector('#pageOne') || {}).textContent || '', paper: (document.querySelector('#pagePaper') || {}).textContent || '', title: document.title }); }; });
+  await page.selectOption('#optPage', 'A4P'); await page.waitForTimeout(200);
+  await page.selectOption('#exportAs', 'pdf'); await page.waitForTimeout(200);
+  let pr = await page.evaluate(() => window.__prints[0]);
+  expect(pr && pr.one && pr.css.includes(`size:${pr.w}px ${pr.h}px`) && pr.css.includes('margin:0'), 'PDF(図の大きさ): 紙 ' + (pr && pr.w) + 'x' + (pr && pr.h) + ' 余白 0');
+  const after = await page.evaluate(() => ({ one: document.body.classList.contains('printOne'), area: document.querySelector('#printArea').childElementCount, css: document.querySelector('#pageOne').textContent }));
+  expect(!after.one && after.area === 0 && after.css === '', '印刷から戻ったら(afterprint が来なくても)紙の指定と印刷用の図を消す');
+  // 続けて「印刷 / PDF(用紙)」: 図の大きさの状態を持ち越さず、A4 縦・横の紙を指定する
+  await page.selectOption('#optPage', 'A4L'); await page.waitForTimeout(200);
+  await page.selectOption('#exportAs', 'print'); await page.waitForTimeout(200);
+  pr = await page.evaluate(() => window.__prints[1]);
+  expect(pr && !pr.one && pr.css === '' && pr.paper.includes('A4 landscape'), '用紙の印刷は A4 横の紙で、図の大きさの状態を持ち越さない: ' + JSON.stringify(pr && pr.paper));
+  await page.selectOption('#optPage', 'A4P'); await page.waitForTimeout(200);
+  expect((await page.evaluate(() => document.querySelector('#pagePaper').textContent)).includes('A4 portrait'), 'A4 縦の紙の指定');
+  await page.selectOption('#optPage', ''); await page.waitForTimeout(200);
+  expect((await page.evaluate(() => document.querySelector('#pagePaper').textContent)) === '', '分割なしなら紙を指定しない');
+  // 構文エラー中は書き出さない(古い図と Python が食い違うのを防ぐ)
+  const good = await page.inputValue('#src');
+  await page.fill('#src', good + 'class X:\n'); await page.waitForTimeout(300);
+  let alerted = '';
+  page.removeAllListeners('dialog'); page.on('dialog', d => { alerted = d.message(); d.accept(); });
+  const nPrint = await page.evaluate(() => window.__prints.length);
+  await page.selectOption('#exportAs', 'pdf'); await page.waitForTimeout(200);
+  expect(alerted.includes('図がありません') && (await page.evaluate(() => window.__prints.length)) === nPrint, 'エラー中の PDF は止める');
+  alerted = ''; let dlHappened = false; page.once('download', () => { dlHappened = true; });
+  await page.selectOption('#exportAs', 'svg'); await page.waitForTimeout(400);
+  expect(alerted.includes('図がありません') && !dlHappened, 'エラー中の SVG は止める');
+  await page.fill('#src', good); await page.waitForTimeout(300);
+  page.removeAllListeners('dialog'); page.on('dialog', d => d.type() === 'prompt' ? d.accept(promptAnswer) : d.accept());
+  expect(fs.readFileSync(path.join(outDir, 'dl_myflow.svg'), 'utf8').includes('@page{size:'), '書き出した SVG に紙の大きさの指定が入る');
   // 再読込(新規で空にしてから)
   await page.click('#btnNew'); await page.waitForTimeout(200);
   await page.setInputFiles('#fileOpen', path.join(outDir, 'dl_myflow.svg')); await page.waitForTimeout(300);
@@ -111,6 +142,25 @@ const nameText = async (page) => (await page.textContent('#fileName')).trim();
   await page.click('#btnSaveAs'); await page.waitForTimeout(300);
   w = await page.evaluate(() => window.__writes);
   expect(w[w.length - 1].name === 'opened_saved.py' && (await nameText(page)) === 'opened_saved.py', '別名で保存で保存先が変わる');
+  // 別名で保存の選択が失敗してダウンロードになったら、前の保存先には上書きしない
+  await page.evaluate(() => { window.__origSave = window.showSaveFilePicker; window.showSaveFilePicker = async () => { throw new Error('denied'); }; });
+  page.removeAllListeners('dialog'); page.on('dialog', d => d.type() === 'prompt' ? d.accept('b.py') : d.accept());
+  await page.fill('#src', 'b = 1\n'); await page.waitForTimeout(300);
+  await page.click('#btnSaveAs'); await page.waitForTimeout(300);
+  expect((await nameText(page)) === 'b.py', 'ダウンロードに切り替わった名前の表示');
+  await page.evaluate(() => { window.showSaveFilePicker = window.__origSave; });
+  const nW = (await page.evaluate(() => window.__writes)).length;
+  await page.fill('#src', 'b = 2\n'); await page.waitForTimeout(300);
+  await page.keyboard.press('Control+s'); await page.waitForTimeout(300);
+  w = await page.evaluate(() => window.__writes);
+  expect(w.length === nW + 1 && w[w.length - 1].name === 'b_saved.py', 'その後の Ctrl+S は前のファイルに書かず、保存先を尋ねる: ' + w[w.length - 1].name);
+  // 記号の編集欄で書き換えて確定せずに Ctrl+S → 書き換えも保存される
+  await page.fill('#src', 'c = 1\n'); await page.waitForTimeout(300);
+  await page.evaluate(() => { const g = [...document.querySelectorAll('#view svg .sym')].find(g => g.querySelector('text')?.textContent === 'c = 1'); g.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+  await page.fill('#edit input[data-k="text"]', 'c = 99');
+  await page.keyboard.press('Control+s'); await page.waitForTimeout(300);
+  w = await page.evaluate(() => window.__writes);
+  expect(w[w.length - 1].text === 'c = 99\n', '編集欄の書き換えも保存に入る: ' + JSON.stringify(w[w.length - 1].text));
   await ctx.close();
 }
 /* ---------- (C) ブラウザへの自動保存 ---------- */
@@ -134,6 +184,28 @@ const nameText = async (page) => (await page.textContent('#fileName')).trim();
   const page2 = await ctx.newPage(); await page2.goto('file://' + html); await page2.waitForTimeout(300);
   await page2.fill('#src', 'x = 1\n'); await page2.waitForTimeout(400);
   expect((await page.textContent('#msg')).includes('別のタブ'), '別のタブでの編集を知らせる');
+  // 別のタブで保存しただけ(内容は同じ)なら警告しない
+  await page.fill('#src', 'z = 1\n'); await page.waitForTimeout(400);
+  await page.evaluate(() => { const w = document.querySelector('[data-tabwarn]'); if (w) w.remove(); });
+  // (2 つのタブの内容をそろえてから、このタブを開き直して警告を消す)
+  await page2.fill('#src', 'z = 1\n'); await page2.waitForTimeout(400);
+  await page.reload(); await page.waitForTimeout(400);
+  await page2.selectOption('#optPage', 'A4P'); await page2.waitForTimeout(400);
+  expect(!(await page.textContent('#msg')).includes('別のタブ'), '別のタブで設定を替えただけなら警告しない');
+  await page2.fill('#src', 'z = 2\n'); await page2.waitForTimeout(400);
+  expect((await page.textContent('#msg')).includes('別のタブ'), '内容が変わったら警告する');
+  await Promise.all([page.waitForEvent('download'), page.click('#btnSaveAs')]); await page.waitForTimeout(200);
+  expect(!(await page.textContent('#msg')).includes('別のタブ'), 'このタブで保存したら警告を消す');
+  // 描き直しの前(150ms 以内)に閉じても、最後の入力が残る
+  await page.fill('#src', 'quick = 1\n'); await page.reload(); await page.waitForTimeout(400);
+  expect((await page.inputValue('#src')) === 'quick = 1\n', '入力直後に再読み込みしても最後の入力が残る');
+  // 未保存の状態で PNG を開こうとしても、破棄の確認は出さずに「開けません」だけ出す
+  page.removeAllListeners('dialog'); const msgs = [];
+  page.on('dialog', d => { msgs.push(d.type()); d.accept(); });
+  await page.fill('#src', 'unsaved = 1\n'); await page.waitForTimeout(300);
+  await page.setInputFiles('#fileOpen', { name: 'a.png', mimeType: 'image/png', buffer: Buffer.from('x') }); await page.waitForTimeout(200);
+  expect(msgs.length === 1 && msgs[0] === 'alert' && (await page.inputValue('#src')) === 'unsaved = 1\n', 'PNG は破棄の確認なしに断る: ' + msgs.join(','));
+  page.removeAllListeners('dialog'); page.on('dialog', d => d.type() === 'prompt' ? d.accept('auto') : d.accept());
   // 保存できないとき(localStorage が使えない)の警告
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('quota'); }; });
   await page.fill('#src', 'y = 2\n'); await page.waitForTimeout(400);

@@ -1,11 +1,12 @@
-# フローチャート v0.16 — リポジトリルートに展開する zip。すべて投入可。v0.15 からの変更: ページ分割で、切れ目の下で横に曲がって背骨に戻る線は、下の結合子を背骨の上に移してまっすぐ下ろす。
+# フローチャート v0.20 — リポジトリルートに展開する zip。すべて投入可。v0.19 からの変更: 簡易レビューの指摘の修正(別名で保存がダウンロードに切り替わった後に前のファイルへ上書きする、PDF(図の大きさ)の状態が後の印刷に残る、エラー中に古い図を書き出す、用紙の印刷で A4 縦・横を指定、閉じる直前の入力の自動保存、別タブ警告の出すぎ、PNG を開くときの不要な確認、編集欄の書き換え途中の Ctrl+S)。README と test/io.mjs を更新。
 # 検証: md5sum -c <(grep -v '^#' MANIFEST.txt)
+5bcba875510fcaded3d69aab368689d0  CNAME
 5ec64f26876e09835b1e5e225c805086  LICENSE
-e41a6dee1aacdff89ffed0cf4a005742  README.md
+121706e3a67d3d15733f8bf1c28fd455  README.md
 75bc55c3c66e7f1b8fa16b934e5357f5  docs/prompt_for_ai.md
 b0c5f747244188f5f4a51cb12b82eab8  docs/記号と検査規則.md
 e753e03e8fe8c8f7b470c384804956f7  docs/記法仕様書.md
-c9d69ac64d9b9d6d0c5cbb590e2851ae  index.html
+32925e1da201c3e0f0bf2bb82d86fd8e  index.html
 f906148de2916198472d454051b8b419  test/errors/e01_class.py
 006af0910e508a385449149c356edf45  test/errors/e02_indent.py
 f76fc2b8832e5381125926d8278e2ce8  test/errors/e03_dead.py
@@ -21,7 +22,7 @@ ce26c06e00aed55fbf9dbe577eecb736  test/errors/e10_print_ternary.py
 fde521484859629dd851d009e3acafe4  test/errors/e13_def_in_loop.py
 8065386b6a409137e94c67bb964c53f6  test/errors/e14_match.py
 0598bce1597f2cac9e143bae85e96c40  test/gui.mjs
-09a818d1f50442c0a8beb913e6f669ed  test/io.mjs
+e55490381497eade42a55c7296144745  test/io.mjs
 2deea2904e4c0a9d33a426c2ba4cfb14  test/run.mjs
 2b95de5e1aa94827153c0a3a5018a1cf  test/samples/01_sum.py
 d8358f4631b9c290caefea2194dbd6a2  test/samples/02_for_range.py
