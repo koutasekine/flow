@@ -1,9 +1,9 @@
-# フローチャート v0.20 — リポジトリルートに展開する zip。すべて投入可。v0.19 からの変更: 簡易レビューの指摘の修正(別名で保存がダウンロードに切り替わった後に前のファイルへ上書きする、PDF(図の大きさ)の状態が後の印刷に残る、エラー中に古い図を書き出す、用紙の印刷で A4 縦・横を指定、閉じる直前の入力の自動保存、別タブ警告の出すぎ、PNG を開くときの不要な確認、編集欄の書き換え途中の Ctrl+S)。README と test/io.mjs を更新。
+# フローチャート v0.21 — リポジトリルートに展開する zip。すべて投入可。v0.20 からの変更: docs/prompt_for_ai.md の冒頭を、Python でしか書けないと誤解されないよう書き直し(日本語の手順を直接書けること、日本語で書くときの制約)。
 # 検証: md5sum -c <(grep -v '^#' MANIFEST.txt)
 5bcba875510fcaded3d69aab368689d0  CNAME
 5ec64f26876e09835b1e5e225c805086  LICENSE
 121706e3a67d3d15733f8bf1c28fd455  README.md
-75bc55c3c66e7f1b8fa16b934e5357f5  docs/prompt_for_ai.md
+466538ac443951598f136bb893a630b1  docs/prompt_for_ai.md
 b0c5f747244188f5f4a51cb12b82eab8  docs/記号と検査規則.md
 e753e03e8fe8c8f7b470c384804956f7  docs/記法仕様書.md
 32925e1da201c3e0f0bf2bb82d86fd8e  index.html
